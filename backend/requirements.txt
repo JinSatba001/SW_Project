@@ -1,0 +1,7 @@
+fastapi==0.68.1
+uvicorn==0.15.0
+gunicorn==23.0.0
+gensim==4.1.2
+numpy==1.21.2
+konlpy==0.6.0
+jpype1==1.4.1
