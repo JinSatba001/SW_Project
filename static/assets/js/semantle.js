@@ -16,17 +16,10 @@ let guessCount = 0;
 let model = null;
 let numPuzzles = 4650;
 const now = Date.now();
-const initialDate = new Date('2022-04-01T00:00:00+09:00');
-const puzzleNumber = Math.floor((new Date() - initialDate) / 86400000) % numPuzzles;
 const yesterdayPuzzleNumber = (puzzleNumber + numPuzzles - 1) % numPuzzles;
 const storage = window.localStorage;
 let chrono_forward = 1;
 let prefersDarkColorScheme = false;
-// settings
-let darkMode = storage.getItem("darkMode") === 'true';
-let shareGuesses = storage.getItem("shareGuesses") === 'false' ? false: true;
-let shareTime = storage.getItem("shareTime") === 'false' ? false: true;
-let shareTopGuess = storage.getItem("shareTopGuess") === 'false' ? false: true;
 
 function $(id) {
     if (id.charAt(0) !== '#') return false;
@@ -40,7 +33,6 @@ function share() {
     const copied = ClipboardJS.copy(text);
 
     if (copied) {
-        gtag('event', 'share');
         alert("클립보드로 복사했습니다.");
     }
     else {
@@ -81,59 +73,6 @@ function getUpdateTimeHours() {
     return midnightUtc.getHours();
 }
 
-function solveStory(guesses, puzzleNumber) {
-    let guess_count = guesses.length - 1;
-    let is_win = storage.getItem("winState") == 1;
-    if (is_win) {
-        guess_count += 1
-        if (guess_count == 1) {
-            return `이럴 수가! 첫번째 추측에서 ${puzzleNumber}번째 꼬맨틀 정답 단어를 맞혔습니다!\nhttps://semantle-ko.newsjel.ly/`;
-        }
-    }
-    if (guess_count == 0) {
-        return `${puzzleNumber}번째 꼬맨틀을 시도하지 않고 바로 포기했어요.\nhttps://semantle-ko.newsjel.ly/`;
-    }
-
-    let describe = function(similarity, percentile) {
-        let out = `${similarity.toFixed(2)}`;
-        if (percentile != '1000위 이상') {
-            out += ` (순위 ${percentile})`;
-        }
-        return out;
-    }
-
-    let time = storage.getItem('endTime') - storage.getItem('startTime');
-    let timeFormatted = new Date(time).toISOString().substr(11, 8).replace(":", "시간").replace(":", "분");
-    let timeInfo = `소요 시간: ${timeFormatted}초\n`
-    if (time > 24 * 3600000) {
-        timeInfo = '소요 시간: 24시간 이상\n'
-    }
-    if (!shareTime) {
-        timeInfo = ''
-    }
-
-    let topGuessMsg = ''
-    const topGuesses = guesses.slice();
-    if (shareTopGuess) {
-        topGuesses.sort(function(a, b){return b[0]-a[0]});
-        const topGuess = topGuesses[1];
-        let [similarity, old_guess, percentile, guess_number] = topGuess;
-        topGuessMsg = `최대 유사도: ${describe(similarity, percentile)}\n`;
-    }
-    let guessCountInfo = '';
-    if (shareGuesses) {
-        guessCountInfo = `추측 횟수: ${guess_count}\n`;
-    }
-
-    if (is_win) {
-        return `${puzzleNumber}번째 꼬맨틀을 풀었습니다!\n${guessCountInfo}` +
-            `${timeInfo}${topGuessMsg}https://semantle-ko.newsjel.ly/`;
-    }
-
-    return `저런… ${puzzleNumber}번째 꼬맨틀을 포기했어요..ㅠ\n${guessCountInfo}` +
-            `${timeInfo}${topGuessMsg}https://semantle-ko.newsjel.ly/`;
-}
-
 let Semantle = (function() {
     async function getSimilarityStory(puzzleNumber) {
         const url = "/similarity/" + puzzleNumber;
@@ -162,29 +101,7 @@ let Semantle = (function() {
         }
     }
 
-    async function getNearby(word) {
-        const url = "/nearby/" + word ;
-        const response = await fetch(url);
-        try {
-            return await response.json();
-        } catch (e) {
-            return null;
-        }
-    }
-
-    async function getYesterday() {
-        const url = "/yesterday/" + puzzleNumber
-        try {
-            return (await fetch(url)).text();
-        } catch (e) {
-            return null;
-        }
-    }
-
     async function init() {
-        let yesterday = await getYesterday()
-        $('#yesterday2').innerHTML = `어제의 정답 단어는 <b>"${yesterday}"</b>입니다.`;
-        $('#yesterday-nearest1k').innerHTML = `정답 단어와 비슷한, <a href="/nearest1k/${yesterdayPuzzleNumber}">유사도 기준 상위 1,000개의 단어</a>를 확인할 수 있습니다.`;
 
         try {
             similarityStory = await getSimilarityStory(puzzleNumber);
@@ -225,57 +142,6 @@ let Semantle = (function() {
             });
         });
 
-        $('#dark-mode').addEventListener('click', function(event) {
-            storage.setItem('darkMode', event.target.checked);
-            toggleDarkMode(event.target.checked);
-        });
-
-        toggleDarkMode(darkMode);
-
-        $('#share-guesses').addEventListener('click', function(event) {
-            storage.setItem('shareGuesses', event.target.checked);
-            shareGuesses = event.target.checked;
-        });
-
-        $('#share-time').addEventListener('click', function(event) {
-            storage.setItem('shareTime', event.target.checked);
-            shareTime = event.target.checked;
-        });
-
-        $('#share-top-guess').addEventListener('click', function(event) {
-            storage.setItem('shareTopGuess', event.target.checked);
-            shareTopGuess = event.target.checked;
-        });
-
-        $('#dark-mode').checked = darkMode;
-        $('#share-guesses').checked = shareGuesses;
-        $('#share-time').checked = shareTime;
-        $('#share-top-guess').checked = shareTopGuess;
-
-        $('#give-up-btn').addEventListener('click', async function(event) {
-            if (!gameOver) {
-                if (confirm("정말로 포기하시겠습니까?")) {
-                    const url = '/giveup/' + puzzleNumber;
-                    const secret = await (await fetch(url)).text();
-                    guessed.add(secret);
-                    guessCount += 1;
-                    const newEntry = [100, secret, '정답', guessCount];
-                    guesses.push(newEntry);
-                    guesses.sort(function(a, b){return b[0]-a[0]});
-                    updateGuesses(guess);
-                    endGame(false, true);
-                    gtag('event', 'giveup', {
-                        'event_category' : 'game_event',
-                        'event_label' : 'giveup',
-                    });
-                    gtag('event', 'giveup', {
-                        'event_category' : 'game_event',
-                        'event_label' : 'guess_count',
-                        'value' : guessCount,
-                    });
-                }
-            }
-        });
 
         $('#form').addEventListener('submit', async function(event) {
             event.preventDefault();
@@ -311,11 +177,6 @@ let Semantle = (function() {
                     storage.setItem('startTime', Date.now())
                 }
                 guessCount += 1;
-                gtag('event', 'nth_guess', {
-                    'event_category' : 'game_event',
-                    'event_label' : guess,
-                    'value' : guessCount,
-                });
                 guessed.add(guess);
 
                 const newEntry = [similarity, guess, percentile, guessCount];
@@ -339,15 +200,6 @@ let Semantle = (function() {
 
             if (guessData.sim == 1 && !gameOver) {
                 endGame(true, true);
-                gtag('event', 'win', {
-                    'event_category' : 'game_event',
-                    'event_label' : 'win',
-                });
-                gtag('event', 'win', {
-                    'event_category' : 'game_event',
-                    'event_label' : 'guess_count',
-                    'value' : guessCount,
-                });
             }
             return false;
         });
@@ -405,36 +257,11 @@ let Semantle = (function() {
         });
     }
 
-    function toggleDarkMode(on) {
-        document.body.classList[on ? 'add' : 'remove']('dark');
-        const darkModeCheckbox = $("#dark-mode");
-        darkMode = on;
-        // this runs before the DOM is ready, so we need to check
-        if (darkModeCheckbox) {
-            darkModeCheckbox.checked = on;
-        }
-    }
-
     function checkMedia() {
         let darkMode = storage.getItem("darkMode") === 'true';
         toggleDarkMode(darkMode);
     }
 
-    function setSnowMode() {
-        let days = Math.floor(Date.now() / 1000 / 60 / 60 / 24)
-        let on = days % 3 === 0
-        document.body.classList[on ? 'add' : 'remove']('snow');
-    }
-
-    function saveGame(guessCount, winState) {
-        // If we are in a tab still open from yesterday, we're done here.
-        // Don't save anything because we may overwrite today's game!
-        let savedPuzzleNumber = storage.getItem("puzzleNumber");
-        if (savedPuzzleNumber != puzzleNumber) { return }
-
-        storage.setItem("winState", winState);
-        storage.setItem("guesses", JSON.stringify(guesses));
-    }
 
     function getStats() {
         const oldStats = storage.getItem("stats");
@@ -467,62 +294,6 @@ let Semantle = (function() {
                 stats['lastPlay'] = puzzleNumber;
             }
             return stats;
-        }
-    }
-
-    function endGame(won, countStats) {
-        let stats = getStats();
-        if (storage.getItem('endTime') == null) {
-            storage.setItem('endTime', Date.now())
-        }
-        if (countStats) {
-            const onStreak = (stats['lastEnd'] == puzzleNumber - 1);
-
-            stats['lastEnd'] = puzzleNumber;
-            if (won) {
-                if (onStreak) {
-                    stats['winStreak'] += 1;
-                } else {
-                stats['winStreak'] = 1;
-                }
-                stats['wins'] += 1;
-            } else {
-                stats['winStreak'] = 0;
-                stats['giveups'] += 1;
-            }
-            storage.setItem("stats", JSON.stringify(stats));
-        }
-
-        $('#give-up-btn').style = "display:none;";
-        $('#response').classList.add("gaveup");
-        gameOver = true;
-        let response;
-        if (won) {
-            response = `<p><b>정답 단어를 맞혔습니다. ${guesses.length}번째 추측만에 정답을 맞혔네요!</b><br/>`;
-        } else {
-            response = `<p><b>${guesses.length - 1}번째 추측에서 포기했습니다!</b><br/>`;
-        }
-        const commonResponse = `정답 단어와 비슷한, <a href="/nearest1k/${puzzleNumber}">상위 1,000개의 단어</a>를 확인해보세요.</p>`
-        response += commonResponse;
-        response += `<input type="button" value="기록 복사하기" id="result" onclick="share()" class="button"><br />`
-        const totalGames = stats['wins'] + stats['giveups'] + stats['abandons'];
-        response += `<br/>
-        ${puzzleNumber + 1}번째 꼬맨틀은 오늘 밤 자정(한국 시간 기준)에 열립니다.<br/>
-<br/>
-<b>나의 플레이 기록</b>: <br/>
-<table>
-<tr><th>가장 처음 풀었던 꼬맨틀 번호:</th><td>${stats['firstPlay']}</td></tr>
-<tr><th>도전한 게임 횟수:</th><td>${totalGames}</td></tr>
-<tr><th>정답 횟수:</th><td>${stats['wins']}</td></tr>
-<tr><th>연속 정답 횟수:</th><td>${stats['winStreak']}</td></tr>
-<tr><th>포기 횟수:</th><td>${stats['giveups']}</td></tr>
-<tr><th>지금까지 추측 단어 총 갯수:</th><td>${stats['totalGuesses']}</td></tr>
-</table>
-`;
-        $('#response').innerHTML = response;
-
-        if (countStats) {
-            saveGame(guesses.length, won ? 1 : 0);
         }
     }
 
