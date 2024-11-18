@@ -16,5 +16,7 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 COPY ./requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
 
-ENTRYPOINT [ "gunicorn", "semantle:app", "--bind", "0.0.0.0:80" ]
+# 기본 실행 방식을 Gunicorn으로 설정
+CMD ["gunicorn", "semantle:app", "--bind", "0.0.0.0:80"]
