@@ -1,33 +1,45 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>1대1 단어 맞추기 게임</title>
-    <!-- Socket.IO 라이브러리 -->
-    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
-    <!-- 외부 JavaScript 파일 연결 -->
-    <script src="{{ url_for('static', filename='assets/js/app.js') }}"></script>
+    <title>단어 맞추기 게임</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <h1>1대1 단어 맞추기 게임</h1>
+    <div class="container">
+        <div id="lobby" class="section">
+            <h1>단어 맞추기 게임</h1>
+            <div class="username-section">
+                <input type="text" id="username" placeholder="닉네임을 입력하세요">
+                <button onclick="setUsername()" class="btn">닉네임 설정</button>
+            </div>
+            <div id="room-controls" style="display: none;">
+                <button onclick="createRoom()" class="btn primary">방 만들기</button>
+                <div class="join-section">
+                    <input type="text" id="room-id-input" placeholder="방 번호">
+                    <button onclick="joinRoom()" class="btn">방 참여하기</button>
+                </div>
+            </div>
+        </div>
 
-    <!-- 게임 로비 -->
-    <div id="lobby">
-        <input type="text" id="username" placeholder="Enter your name">
-        <input type="text" id="room" placeholder="Enter room name">
-        <button onclick="joinGame()">Join Game</button>
+        <div id="game-room" class="section" style="display: none;">
+            <h2>게임방 #<span id="current-room"></span></h2>
+            <div class="players-section">
+                <h3>참가자</h3>
+                <div id="players-list"></div>
+            </div>
+            <div id="start-section" style="display: none;">
+                <button onclick="startGame()" class="btn primary">게임 시작</button>
+            </div>
+            <div id="game-section" style="display: none;">
+                <input type="text" id="guess-input" placeholder="단어를 입력하세요">
+                <button onclick="submitGuess()" class="btn">추측하기</button>
+                <div id="guess-results"></div>
+            </div>
+            <button onclick="leaveRoom()" class="btn danger">방 나가기</button>
+        </div>
     </div>
 
-    <!-- 게임 화면 -->
-    <div id="game" style="display:none;">
-        <h2>Game Room: <span id="room-name"></span></h2>
-        <div id="players"></div>
-        <div id="scores"></div>
-        <input type="text" id="guess" placeholder="Enter your guess">
-        <button onclick="submitGuess()">Submit Guess</button>
-        <div id="results"></div>
-        <button onclick="leaveGame()">Leave Room</button>
-    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="{{ url_for('static', filename='js/game.js') }}"></script>
 </body>
 </html>

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word Matching Game - Play</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            padding: 20px;
+            max-width: 800px;
+            margin: 20px auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        .player-area, .chatbox, .log-area {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #fafafa;
+        }
+        .log-area {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        button {
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Word Matching Game</h1>
+        <div id="similarity-story"></div>
+        <div id="form">
+            <input placeholder="추측할 단어를 입력하세요" autocorrect="off" autocapitalize="none" autocomplete="off"
+                        type="text" id="guess" autofocus>
+            <button type="submit">추측하기</button>
+        </div>
+        <div id="error" style="color: red; margin: 10px 0;"></div>
+        <div class="log-area">
+            <h3>Guess Log</h3>
+            <table id="guesses" style="width: 100%; text-align: left;">
+                <tr>
+                    <th>#</th>
+                    <th>Word</th>
+                    <th>Similarity</th>
+                    <th>Rank</th>
+                </tr>
+            </table>
+        </div>
+        <button onclick="exitGame()">Exit</button>
+    </div>
+    <script>
+        'use strict';
+
+        const $ = (id) => document.getElementById(id.substring(1));
+        let guesses = [];
+        let guessed = new Set();
+        const storage = window.localStorage;
+
+        async function getSimilarityStory(puzzleNumber) {
+            const response = await fetch(`/similarity/${puzzleNumber}`);
+            return await response.json();
+        }
+
+        async function submitGuess(word, puzzleNumber) {
+            const response = await fetch(`/guess/${puzzleNumber}/${word}`);
+            return await response.json();
+        }
+
+        async function init() {
+            const puzzleNumber = 1; // Replace with dynamic puzzle logic
+            const similarityStory = await getSimilarityStory(puzzleNumber);
+            $('#similarity-story').innerHTML = `
+                Today's puzzle: #${puzzleNumber}<br/>
+                Top similarity: ${(similarityStory.top * 100).toFixed(2)}%<br/>
+                Try to guess the word!
+            `;
+
+            $('#form').addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const guess = $('#guess').value.trim();
+                if (!guess || guessed.has(guess)) return;
+                const data = await submitGuess(guess, puzzleNumber);
+                if (data.error) {
+                    $('#error').textContent = data.error;
+                    return;
+                }
+                guessed.add(guess);
+                guesses.push([data.similarity, guess, data.rank, guesses.length + 1]);
+                updateLog();
+                $('#guess').value = "";
+            });
+        }
+
+        function updateLog() {
+            const table = $('#guesses');
+            table.innerHTML = `<tr><th>#</th><th>Word</th><th>Similarity</th><th>Rank</th></tr>`;
+            guesses.forEach(([similarity, word, rank, index]) => {
+                const row = `<tr><td>${index}</td><td>${word}</td><td>${similarity.toFixed(2)}</td><td>${rank}</td></tr>`;
+                table.innerHTML += row;
+            });
+        }
+
+        function exitGame() {
+            window.location.href = "index.html";
+        }
+
+        init();
+    </script>
+</body>
+</html>
