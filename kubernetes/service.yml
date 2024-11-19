@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: word-game-service
+spec:
+  selector:
+    app: word-game
+  ports:
+  - port: 80
+    targetPort: 8899
+  type: LoadBalancer
