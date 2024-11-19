@@ -56,13 +56,24 @@
         <div id="room-list" class="room-list">
             <h3>생성된 방 리스트</h3>
             <ul id="rooms">
-                <!-- Rooms will be dynamically added here -->
+                {% for room_id in rooms.keys() %}
+                <li><a href="/room/{{ room_id }}">Room {{ room_id }}</a></li>
+                {% endfor %}
             </ul>
         </div>
     </div>
 
     <script>
         const apiBaseUrl = "http://your-flask-server-url/api";
+        
+        const form = document.getElementById('create-room-form');
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const response = await fetch('/create-room', { method: 'POST' });
+            const data = await response.json();
+            alert(`Room ${data.room_id} created with secret: ${data.secret}`);
+            location.reload();
+        });
 
          // Fetch and display rooms
          async function loadRooms() {
