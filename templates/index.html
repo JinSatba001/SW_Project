@@ -58,6 +58,10 @@
 </head>
 <body>
     <div class="container">
+        <div class="header">
+            <span>안녕하세요, {{ username }}님!</span>
+            <a href="{{ url_for('logout') }}">로그아웃</a>
+        </div>
         <h1>단어 맞추기 게임</h1>
         <p>1대1 단어 맞추기! 친구와 함께 경쟁해보세요.</p>
         <div class="user-info">

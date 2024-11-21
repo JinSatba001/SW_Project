@@ -1,6 +1,7 @@
 import pickle
 import random
 from datetime import date, datetime
+from functools import wraps
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -10,16 +11,23 @@ from flask import (
     send_from_directory,
     jsonify,
     render_template,
-    request
+    request,
+    redirect,
+    url_for,
+    session
 )
 from pytz import utc, timezone
 from flask_socketio import SocketIO, emit, join_room, leave_room
+from redis import Redis
 
+import hashlib
 import word2vec
 from process_similar import get_nearest
 
 
 app = Flask(__name__)
+app.secret_key = 'your-secret-key'
+redis_client = Redis(host='redis', port=6379, db=0)
 socketio = SocketIO(app)
 
 rooms = {}
@@ -32,29 +40,16 @@ with open('data/secrets.txt', 'r', encoding='utf-8') as f:
 print("initializing nearest words for solutions")
 app.secrets = dict()
 app.nearests = dict()
+
+# 고정된 puzzle_number 사용
+puzzle_number = 0  # 또는 원하는 시작 번호
+
 for offset in range(-2, 2):
-    secret_word = secrets[puzzle_number]
-    app.secrets[puzzle_number] = secret_word
-    app.nearests[puzzle_number] = get_nearest(puzzle_number, secret_word, valid_nearest_words, valid_nearest_vecs)
+    current_puzzle = puzzle_number + offset
+    secret_word = secrets[current_puzzle % len(secrets)]  # secrets 배열의 범위를 벗어나지 않도록 수정
+    app.secrets[current_puzzle] = secret_word
+    app.nearests[current_puzzle] = get_nearest(current_puzzle, secret_word, valid_nearest_words, valid_nearest_vecs)
 
-
-# @scheduler.scheduled_job(trigger=CronTrigger(hour=1, minute=0, timezone=KST))
-# def update_nearest():
-#     print("scheduled stuff triggered!")
-#     next_puzzle = ((utc.localize(datetime.utcnow()).astimezone(KST).date() - FIRST_DAY).days + 1) % NUM_SECRETS
-#     next_word = secrets[next_puzzle]
-#     to_delete = (next_puzzle - 4) % NUM_SECRETS
-#     if to_delete in app.secrets:
-#         del app.secrets[to_delete]
-#     if to_delete in app.nearests:
-#         del app.nearests[to_delete]
-#     app.secrets[next_puzzle] = next_word
-#     app.nearests[next_puzzle] = get_nearest(next_puzzle, next_word, valid_nearest_words, valid_nearest_vecs)
-
-
-@app.route('/')
-def get_index():
-    return render_template('index.html', rooms=rooms)
 
 
 @app.route('/robots.txt')
@@ -77,8 +72,40 @@ def get_similarity(day: int):
     nearest_dists = sorted([v[1] for v in app.nearests[day].values()])
     return jsonify({"top": nearest_dists[-2], "top10": nearest_dists[-11], "rest": nearest_dists[0]})
 
+# 로그인 상태 확인 데코레이터 추가
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'username' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/')
+def get_index():
+    return render_template('index.html', rooms=rooms, username=session.get('username'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if 'username' in session:
+        return redirect(url_for('get_index'))
+        
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        stored_password = redis_client.hget('users', username)
+        
+        if stored_password and stored_password.decode() == hashed_password:
+            session['username'] = username
+            return redirect(url_for('get_index'))
+        return '로그인 실패'
+    
+    return render_template('login.html')
 
 @app.route('/create-room', methods=['POST'])
+@login_required
 def create_room():
     room_id = str(len(rooms) + 1)
     secret_word = random.choice(secrets)
@@ -141,6 +168,26 @@ def get_rooms():
     room_list = [{'id': k, 'name': v['name'], 'players': len(v['players'])} for k, v in rooms.items()]
     return jsonify(room_list)
 
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        
+        if redis_client.hexists('users', username):
+            return '이미 존재하는 사용자입니다.'
+        
+        redis_client.hset('users', username, hashed_password)
+        return redirect(url_for('login'))
+    
+    return render_template('register.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('username', None)
+    return redirect(url_for('login'))
 
 @socketio.on('join')
 def on_join(data):
@@ -160,6 +207,13 @@ def on_leave(data):
         leave_room(room_id)
         rooms[room_id]['players'].remove(request.sid)
         emit('user_left', {'room_id': room_id}, room=room_id)
+
+def similarity(word1, word2):
+    """두 단어 간의 유사도를 계산하는 함수"""
+    try:
+        return word2vec.similarity(word1, word2)
+    except KeyError:
+        return 0.0
 
 
 if __name__ == '__main__':

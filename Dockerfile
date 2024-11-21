@@ -27,6 +27,9 @@ RUN mkdir -p /app/data/near
 # 애플리케이션 코드 복사
 COPY . /app/
 
+# 데이터 파일 복사
+COPY data/ /app/data/
+
 # 볼륨 마운트 포인트 설정 (단어 데이터 및 게임 상태 저장용)
 VOLUME ["/app/data"]
 
@@ -34,4 +37,4 @@ VOLUME ["/app/data"]
 EXPOSE 5000
 
 # Gunicorn으로 실행 (eventlet 워커를 사용하여 WebSocket 지원)
-CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:5000", "app:app"]
+CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:5000", "semantle:app"]
