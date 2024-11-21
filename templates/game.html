@@ -48,12 +48,13 @@
 <body>
     <div class="container">
         <h1>Word Matching Game</h1>
+        <div id="room-info"></div>
         <div id="similarity-story"></div>
-        <div id="form">
+        <form id="form">
             <input placeholder="추측할 단어를 입력하세요" autocorrect="off" autocapitalize="none" autocomplete="off"
                         type="text" id="guess" autofocus>
             <button type="submit">추측하기</button>
-        </div>
+        </form>
         <div id="error" style="color: red; margin: 10px 0;"></div>
         <div class="log-area">
             <h3>Guess Log</h3>
@@ -74,7 +75,24 @@
         const $ = (id) => document.getElementById(id.substring(1));
         let guesses = [];
         let guessed = new Set();
-        const storage = window.localStorage;
+
+        // 현재 방 ID 추출
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomId = urlParams.get('room_id');
+
+        async function fetchRoomInfo() {
+            const response = await fetch(`/room/${roomId}`);
+            if (!response.ok) {
+                $('#room-info').textContent = "Failed to load room information.";
+                throw new Error("Room not found");
+            }
+            const roomData = await response.json();
+            $('#room-info').innerHTML = `
+                <p>Room ID: ${roomId}</p>
+                <p>Secret Word: (hidden)</p>
+            `;
+            return roomData;
+        }
 
         async function getSimilarityStory(puzzleNumber) {
             const response = await fetch(`/similarity/${puzzleNumber}`);
@@ -87,28 +105,35 @@
         }
 
         async function init() {
-            const puzzleNumber = 1; // Replace with dynamic puzzle logic
-            const similarityStory = await getSimilarityStory(puzzleNumber);
-            $('#similarity-story').innerHTML = `
-                Today's puzzle: #${puzzleNumber}<br/>
-                Top similarity: ${(similarityStory.top * 100).toFixed(2)}%<br/>
-                Try to guess the word!
-            `;
+            try {
+                const roomData = await fetchRoomInfo();
+                const similarityStory = await getSimilarityStory(roomId);
 
-            $('#form').addEventListener('submit', async (event) => {
-                event.preventDefault();
-                const guess = $('#guess').value.trim();
-                if (!guess || guessed.has(guess)) return;
-                const data = await submitGuess(guess, puzzleNumber);
-                if (data.error) {
-                    $('#error').textContent = data.error;
-                    return;
-                }
-                guessed.add(guess);
-                guesses.push([data.similarity, guess, data.rank, guesses.length + 1]);
-                updateLog();
-                $('#guess').value = "";
-            });
+                $('#similarity-story').innerHTML = `
+                    Room ID: ${roomId}<br/>
+                    Top similarity: ${(similarityStory.top * 100).toFixed(2)}%<br/>
+                    Try to guess the word!
+                `;
+
+                $('#form').addEventListener('submit', async (event) => {
+                    event.preventDefault();
+                    const guess = $('#guess').value.trim();
+                    if (!guess || guessed.has(guess)) return;
+
+                    const data = await submitGuess(guess, roomId);
+                    if (data.error) {
+                        $('#error').textContent = data.error;
+                        return;
+                    }
+
+                    guessed.add(guess);
+                    guesses.push([data.similarity, guess, data.rank, guesses.length + 1]);
+                    updateLog();
+                    $('#guess').value = "";
+                });
+            } catch (error) {
+                console.error(error);
+            }
         }
 
         function updateLog() {
@@ -121,7 +146,7 @@
         }
 
         function exitGame() {
-            window.location.href = "index.html";
+            window.location.href = "/";
         }
 
         init();

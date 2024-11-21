@@ -49,6 +49,7 @@ def index():
     return render_template('index.html')
 
 
+
 @socketio.on('join_game')
 def handle_join_game(data):
     """플레이어가 게임 방에 참여"""
