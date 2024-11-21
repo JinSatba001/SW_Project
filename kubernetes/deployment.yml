@@ -1,26 +1,30 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: word-game
+  name: game-server-deployment
+  labels:
+    app: game-server
 spec:
-  replicas: 3
+  replicas: 2  # Pod 복제 개수 (스케일링을 위해 2개로 설정)
   selector:
     matchLabels:
-      app: word-game
+      app: game-server
   template:
     metadata:
       labels:
-        app: word-game
+        app: game-server
     spec:
       containers:
-      - name: word-game
-        image: word-game:latest
-        ports:
-        - containerPort: 8899
-        volumeMounts:
-        - name: game-data
-          mountPath: /app/data
-      volumes:
-      - name: game-data
-        persistentVolumeClaim:
-          claimName: word-game-pvc
+        - name: flask-app
+          image: your-dockerhub-username/flask-app:latest # 이미지 이름 수정
+          ports:
+            - containerPort: 5000
+          env:
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+        - name: redis
+          image: redis:latest
+          ports:
+            - containerPort: 6379
