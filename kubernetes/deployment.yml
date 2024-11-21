@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: word-game
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: word-game
+  template:
+    metadata:
+      labels:
+        app: word-game
+    spec:
+      containers:
+      - name: word-game
+        image: word-game:latest
+        ports:
+        - containerPort: 8899
+        volumeMounts:
+        - name: game-data
+          mountPath: /app/data
+      volumes:
+      - name: game-data
+        persistentVolumeClaim:
+          claimName: word-game-pvc
