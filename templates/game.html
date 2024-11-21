@@ -50,6 +50,10 @@
         <h1>Word Matching Game</h1>
         <div id="room-info"></div>
         <div id="similarity-story"></div>
+        <div class="player-list">
+            <div id="player1">플레이어 1: 대기 중</div>
+            <div id="player2">플레이어 2: 대기 중</div>
+          </div>
         <form id="form">
             <input placeholder="추측할 단어를 입력하세요" autocorrect="off" autocapitalize="none" autocomplete="off"
                         type="text" id="guess" autofocus>
@@ -75,6 +79,13 @@
         const $ = (id) => document.getElementById(id.substring(1));
         let guesses = [];
         let guessed = new Set();
+
+        // HTML에 플레이어 목록 표시
+        function updatePlayerDisplay() {
+            const players = game.getPlayerList();
+            document.getElementById('player1').textContent = `플레이어 1: ${players.player1}`;
+            document.getElementById('player2').textContent = `플레이어 2: ${players.player2}`;
+        }
 
         // 현재 방 ID 추출
         const urlParams = new URLSearchParams(window.location.search);

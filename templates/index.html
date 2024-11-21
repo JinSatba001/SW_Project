@@ -1,45 +1,175 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>단어 맞추기 게임</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>단어 유사도 추측 게임</title>
+
+    <link rel="icon" href="/assets/favicon.ico" sizes="any">
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            padding: 20px;
+            max-width: 600px;
+            margin: 50px auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        .room-list {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #fafafa;
+            text-align: left;
+        }
+        button {
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .user-info {
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 5px;
+        }
+        #username-display {
+            font-weight: bold;
+            color: #007BFF;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <div id="lobby" class="section">
-            <h1>단어 맞추기 게임</h1>
-            <div class="username-section">
-                <input type="text" id="username" placeholder="닉네임을 입력하세요">
-                <button onclick="setUsername()" class="btn">닉네임 설정</button>
-            </div>
-            <div id="room-controls" style="display: none;">
-                <button onclick="createRoom()" class="btn primary">방 만들기</button>
-                <div class="join-section">
-                    <input type="text" id="room-id-input" placeholder="방 번호">
-                    <button onclick="joinRoom()" class="btn">방 참여하기</button>
-                </div>
-            </div>
+        <h1>단어 맞추기 게임</h1>
+        <p>1대1 단어 맞추기! 친구와 함께 경쟁해보세요.</p>
+        <div class="user-info">
+            <p>현재 사용자: <span id="username-display">이름 설정 필요</span></p>
+            <button onclick="setUsername()">이름 설정</button>
         </div>
-
-        <div id="game-room" class="section" style="display: none;">
-            <h2>게임방 #<span id="current-room"></span></h2>
-            <div class="players-section">
-                <h3>참가자</h3>
-                <div id="players-list"></div>
-            </div>
-            <div id="start-section" style="display: none;">
-                <button onclick="startGame()" class="btn primary">게임 시작</button>
-            </div>
-            <div id="game-section" style="display: none;">
-                <input type="text" id="guess-input" placeholder="단어를 입력하세요">
-                <button onclick="submitGuess()" class="btn">추측하기</button>
-                <div id="guess-results"></div>
-            </div>
-            <button onclick="leaveRoom()" class="btn danger">방 나가기</button>
+        <div>
+            <button onclick="createRoom()">Create Room</button>
+        </div>
+        <div id="room-list" class="room-list">
+            <h3>생성된 방 리스트</h3>
+            <ul id="rooms">
+                {% for room_id, room in rooms.items() %}
+                <li>
+                    {{ room.name }} ({{ room.players|length }}/2)
+                    {% if room.players|length < 2 %}
+                        <a href="/room/{{ room_id }}" class="join-button">참여하기</a>
+                    {% else %}
+                        <span class="room-full">방 가득참</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <script src="{{ url_for('static', filename='js/game.js') }}"></script>
+    <script>
+        // WebSocket 연결
+        const socket = io();
+
+        // 사용자 이름 관련 함수들 추가
+        function getUsername() {
+            return localStorage.getItem('username');
+        }
+
+        function setUsername() {
+            const currentName = getUsername() || '';
+            const newName = prompt("사용자 이름을 입력하세요:", currentName);
+            
+            if (newName) {
+                localStorage.setItem('username', newName);
+                updateUsernameDisplay();
+            }
+        }
+
+        function updateUsernameDisplay() {
+            const username = getUsername();
+            const usernameDisplay = document.getElementById('username-display');
+            usernameDisplay.textContent = username || '이름 설정 필요';
+        }
+        
+        // 방 생성
+        async function createRoom() {
+            const username = getUsername();
+            if (!username) {
+                alert('먼저 이름을 설정해주세요!');
+                setUsername();
+                return;
+            }
+
+            const roomName = prompt("방 이름을 입력하세요:");
+            if (!roomName) return;
+            
+            try {
+                const response = await fetch('/api/rooms', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        name: roomName,
+                        username: username
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    window.location.href = `/room/${data.room_id}`;
+                }
+            } catch (error) {
+                console.error('방 생성 실패:', error);
+                alert('방 생성에 실패했습니다.');
+            }
+        }
+
+         // 페이지 로드 시 사용자 이름 표시 업데이트
+         document.addEventListener('DOMContentLoaded', () => {
+            updateUsernameDisplay();
+            if (!getUsername()) {
+                setUsername();
+            }
+        });
+
+        // 방 목록 갱신
+        function updateRoomList(rooms) {
+            const roomList = document.getElementById('rooms');
+            roomList.innerHTML = rooms.map(room => `
+                <li>
+                    ${room.name} (${room.players}/2)
+                    <button onclick="joinRoom('${room.id}')" 
+                            ${room.players >= 2 ? 'disabled' : ''}>
+                        참여하기
+                    </button>
+                </li>
+            `).join('');
+        }
+
+        // 실시간 방 목록 업데이트
+        socket.on('rooms_update', updateRoomList);
+
+        // 초기 방 목록 로드
+        loadRooms();
+    </script>
 </body>
 </html>
