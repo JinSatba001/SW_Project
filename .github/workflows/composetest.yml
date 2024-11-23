@@ -1,0 +1,43 @@
+name: Docker Compose CI
+
+on:
+  push:  
+    branches:
+      - '**'  
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 레포지토리 체크아웃
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # 2. Docker 설치
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v2
+
+      # 3. Docker Compose 설치
+      - name: Install Docker Compose
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      # 4. Docker Compose로 서비스 빌드 및 실행
+      - name: Build and Run Docker Compose
+        run: |
+          docker-compose up -d
+          docker-compose ps  # 실행 중인 컨테이너 상태 확인
+
+      # 5. 서비스 상태 확인 (테스트 단계)
+      - name: Test Flask server
+        run: |
+          sleep 10  # 서버가 완전히 올라올 때까지 대기
+          curl -f http://localhost:5000 || exit 1
+
+      # 6. 컨테이너 정리
+      - name: Shut down Docker Compose
+        run: |
+          docker-compose down

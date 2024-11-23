@@ -14,11 +14,15 @@ from flask import (
     request,
     redirect,
     url_for,
-    session
+    session,
+    flash
 )
 from pytz import utc, timezone
 from flask_socketio import SocketIO, emit, join_room, leave_room
-from redis import Redis
+from redis import Redis, ConnectionPool
+from redis.exceptions import ConnectionError, TimeoutError
+from redis.retry import Retry
+from redis.backoff import ExponentialBackoff
 
 import hashlib
 import word2vec
@@ -94,39 +98,75 @@ def login():
         username = request.form['username']
         password = request.form['password']
         
-        hashed_password = hashlib.sha256(password.encode()).hexdigest()
-        stored_password = redis_client.hget('users', username)
+        if not username or not password:
+            flash('모든 필드를 입력하세요.', 'error')
+            return redirect(url_for('login'))
         
-        if stored_password and stored_password.decode() == hashed_password:
-            session['username'] = username
-            return redirect(url_for('get_index'))
-        return '로그인 실패'
+        session['username'] = username
+        flash(f'{username}님, 환영합니다!', 'success')
+        return redirect(url_for('get_index'))
+            
+        return redirect(url_for('login'))
     
     return render_template('login.html')
 
-@app.route('/create-room', methods=['POST'])
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        if not username or not password:
+            flash('모든 필드를 입력하세요.', 'error')
+            return redirect(url_for('register'))
+            
+        session['username'] = username
+        flash('회원가입이 완료되었습니다.', 'success')
+        return redirect(url_for('get_index'))
+    
+    return render_template('register.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('username', None)
+    flash('로그아웃되었습니다.', 'success')
+    return redirect(url_for('login'))
+
+@app.route('/api/rooms', methods=['POST'])
 @login_required
 def create_room():
+    data = request.get_json()
     room_id = str(len(rooms) + 1)
     secret_word = random.choice(secrets)
-    nearest_data = get_nearest(0, secret_word, valid_nearest_words, valid_nearest_vecs)  # puzzle_number 대신 0 사용
+    nearest_data = get_nearest(0, secret_word, valid_nearest_words, valid_nearest_vecs)
     rooms[room_id] = {
-        "name": f"게임방 {room_id}", 
+        "id": room_id,
+        "name": data['name'],  # 사용자가 입력한 방 이름 사용
         "secret": secret_word,
         "nearest": nearest_data,
-        "players": []  
+        "players": [{"id": session['username'], "name": session['username']}]  # 방장 추가
     }
+    socketio.emit('rooms_update', get_room_list())  # 실시간 방 목록 업데이트
     return jsonify({"room_id": room_id})
 
+def get_room_list():
+    """현재 방 목록을 반환"""
+    return [
+        {
+            'id': k,
+            'name': v['name'],
+            'players': len(v['players'])
+        } for k, v in rooms.items()
+    ]
 
 @app.route('/room/<string:room_id>')
+@login_required
 def room_detail(room_id):
     """특정 방의 상세 정보"""
     if room_id not in rooms:
         return "Room not found", 404
     room_data = rooms[room_id]
-    return render_template('room.html', room_id=room_id, secret=room_data["secret"])
-
+    return render_template('game.html', room_id=room_id, room=room_data)
 
 @app.route('/guess/<string:room_id>/<string:word>')
 def get_room_guess(room_id, word):
@@ -168,27 +208,6 @@ def get_rooms():
     room_list = [{'id': k, 'name': v['name'], 'players': len(v['players'])} for k, v in rooms.items()]
     return jsonify(room_list)
 
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        
-        hashed_password = hashlib.sha256(password.encode()).hexdigest()
-        
-        if redis_client.hexists('users', username):
-            return '이미 존재하는 사용자입니다.'
-        
-        redis_client.hset('users', username, hashed_password)
-        return redirect(url_for('login'))
-    
-    return render_template('register.html')
-
-@app.route('/logout')
-def logout():
-    session.pop('username', None)
-    return redirect(url_for('login'))
-
 @socketio.on('join')
 def on_join(data):
     """방 참여"""
@@ -206,7 +225,28 @@ def on_leave(data):
     if room_id in rooms:
         leave_room(room_id)
         rooms[room_id]['players'].remove(request.sid)
-        emit('user_left', {'room_id': room_id}, room=room_id)
+        
+        # 방에 남은 플레이어가 없으면 방 삭제
+        if len(rooms[room_id]['players']) == 0:
+            del rooms[room_id]
+            emit('room_closed', {'room_id': room_id}, broadcast=True)
+        else:
+            emit('user_left', {'room_id': room_id}, room=room_id)
+
+# 연결이 끊어졌을 때도 방에서 제거하는 이벤트 핸들러 추가
+@socketio.on('disconnect')
+def handle_disconnect():
+    """연결 끊김 처리"""
+    for room_id, room_data in list(rooms.items()):  # list()로 감싸서 순회 중 삭제 가능하게 함
+        if request.sid in room_data['players']:
+            room_data['players'].remove(request.sid)
+            
+            # 방에 남은 플레이어가 없으면 방 삭제
+            if len(room_data['players']) == 0:
+                del rooms[room_id]
+                emit('room_closed', {'room_id': room_id}, broadcast=True)
+            else:
+                emit('user_left', {'room_id': room_id}, room=room_id)
 
 def similarity(word1, word2):
     """두 단어 간의 유사도를 계산하는 함수"""
