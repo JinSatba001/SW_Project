@@ -54,13 +54,41 @@
             font-weight: bold;
             color: #007BFF;
         }
+        .header {
+            padding: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logout-btn {
+            background-color: #dc3545;
+        }
+        
+        .logout-btn:hover {
+            background-color: #c82333;
+        }
+        
+        .login-btn {
+            background-color: #28a745;
+        }
+        
+        .login-btn:hover {
+            background-color: #218838;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <span>안녕하세요, {{ username }}님!</span>
-            <a href="{{ url_for('logout') }}">로그아웃</a>
+            {% if username %}
+                <span>안녕하세요, {{ username }}님!</span>
+                <button class="logout-btn" onclick="window.location.href='{{ url_for('logout') }}'">로그아웃</button>
+            {% else %}
+                <span>게임을 시작하려면 로그인이 필요합니다</span>
+                <button class="login-btn" onclick="window.location.href='{{ url_for('login') }}'">로그인하기</button>
+            {% endif %}
         </div>
         <h1>단어 맞추기 게임</h1>
         <p>1대1 단어 맞추기! 친구와 함께 경쟁해보세요.</p>
@@ -74,11 +102,13 @@
         <div id="room-list" class="room-list">
             <h3>생성된 방 리스트</h3>
             <ul id="rooms">
-                {% for room_id, room in rooms.items() %}
-                <li>
+                {% for room in rooms.values() %}
+                <li data-room-id="{{ room.id }}">
                     {{ room.name }} ({{ room.players|length }}/2)
-                    {% if room.players|length < 2 %}
-                        <a href="/room/{{ room_id }}" class="join-button">참여하기</a>
+                    {% if room.players|length < 2 and session.username %}
+                        <a href="{{ url_for('room_detail', room_id=room.id) }}" class="join-button">참여하기</a>
+                    {% elif not session.username %}
+                        <span>참여하려면 로그인하세요</span>
                     {% else %}
                         <span class="room-full">방 가득참</span>
                     {% endif %}
@@ -170,7 +200,28 @@
         }
 
         // 실시간 방 목록 업데이트
-        socket.on('rooms_update', updateRoomList);
+        socket.on('rooms_update', function(rooms) {
+            const roomList = document.getElementById('rooms');
+            roomList.innerHTML = rooms.map(room => `
+                <li data-room-id="${room.id}">
+                    ${room.name} (${room.players}/2)
+                    ${room.players < 2 && '{{ session.username }}' ? 
+                        `<a href="/room/${room.id}" class="join-button">참여하기</a>` :
+                        !session.username ? 
+                            '<span>참여하려면 로그인하세요</span>' :
+                            '<span class="room-full">방 가득참</span>'
+                    }
+                </li>
+            `).join('');
+        });
+
+        socket.on('room_closed', function(data) {
+            // 방 목록에서 해당 방 제거
+            const roomElement = document.querySelector(`[data-room-id="${data.room_id}"]`);
+            if (roomElement) {
+                roomElement.remove();
+            }
+        });
 
         // 초기 방 목록 로드
         loadRooms();
