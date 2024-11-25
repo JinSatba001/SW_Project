@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Word Matching Game - Play</title>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -50,7 +51,7 @@
         <h1>{{ room.name }}</h1>
         <div id="room-info"></div>
         <div id="similarity-story"></div>
-        <div class="player-list">
+        <div class="player-list" id="players"> <!--플레이어 목록이 동적으로 추가-->
             {% for player in room.players %}
                 <div class="player">{{ player.name }}</div>
             {% endfor %}
@@ -64,129 +65,203 @@
         <div class="log-area">
             <h3>Guess Log</h3>
             <table id="guesses" style="width: 100%; text-align: left;">
-                <tr>
-                    <th>#</th>
-                    <th>Word</th>
-                    <th>Similarity</th>
-                    <th>Rank</th>
-                </tr>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Word</th>
+                        <th>Similarity</th>
+                        <th>Rank</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!--추측기록이 여기에 추가 됨-->
+                </tbody>
             </table>
         </div>
         <button onclick="exitGame()">Exit</button>
     </div>
     <script>
-        'use strict';
+    document.addEventListener('DOMContentLoaded', function() {
+    const socket = io({
+        transports: ['websocket'],
+        upgrade: false
+    });
 
-        const $ = (id) => document.getElementById(id.substring(1));
-        let guesses = [];
-        let guessed = new Set();
+    // 모든 소켓 이벤트 로깅
+    socket.onAny((eventName, ...args) => {
+        console.log('Socket Event:', eventName, 'Data:', args);
+    });
+    
+    const roomId = new URLSearchParams(window.location.search).get('room_id');
+    const username = localStorage.getItem('username') || 'Guest';
+    let guessed = new Set();
 
-        // WebSocket 연결 및 이벤트 처리
-        const socket = io();
-        const roomId = '{{ room_id }}';
+    // room-info 업데이트
+    document.getElementById('room-info');
 
-        socket.emit('join', { room_id: roomId });
+    // 방 참가
+    socket.emit('join_room', {
+        room_id: roomId,
+        username: username
+    });
 
-        socket.on('user_joined', function(data) {
-            updatePlayerList(data.players);
-        });
-
-        socket.on('user_left', function(data) {
-            updatePlayerList(data.players);
-        });
-
-        function updatePlayerList(players) {
-            const playerList = document.querySelector('.player-list');
-            playerList.innerHTML = players.map(player => 
-                `<div class="player">${player.name}</div>`
-            ).join('');
+    // 플레이어 목록 업데이트 함수
+    function updatePlayerList(players) {
+        console.log('updatePlayerList called with:', players);
+        const playerList = document.getElementById('players');
+        if (!playerList) {
+            console.error('Player list element not found');
+            return;
         }
 
-        // HTML에 플레이어 목록 표시
-        function updatePlayerDisplay() {
-            const players = game.getPlayerList();
-            document.getElementById('player1').textContent = `플레이어 1: ${players.player1}`;
-            document.getElementById('player2').textContent = `플레이어 2: ${players.player2}`;
+        const playerHTML = players.map(player => {
+            console.log('Creating player element for:', player);
+            return `<div class="player">${player}</div>`;
+        }).join('');
+        
+        console.log('Setting player list HTML:', playerHTML);
+        playerList.innerHTML = playerHTML;
+    }
+
+    // 추측 기록 업데이트 함수
+    function updateGuessLog(guessHistory) {
+        console.log('updateGuessLog called with:', guessHistory);
+        const guessTable = document.getElementById('guesses');
+        if (!guessTable) {
+            console.error('Guess table not found');
+            return;
+        }
+        
+        const tbody = guessTable.querySelector('tbody');
+        if (!tbody) {
+            console.error('Table body not found');
+            return;
         }
 
-        // 현재 방 ID 추출
-        const urlParams = new URLSearchParams(window.location.search);
-        const roomId = urlParams.get('room_id');
-
-        async function fetchRoomInfo() {
-            const response = await fetch(`/room/${roomId}`);
-            if (!response.ok) {
-                $('#room-info').textContent = "Failed to load room information.";
-                throw new Error("Room not found");
-            }
-            const roomData = await response.json();
-            $('#room-info').innerHTML = `
-                <p>Room ID: ${roomId}</p>
-                <p>Secret Word: (hidden)</p>
+        const rowsHTML = guessHistory.map((guess, index) => {
+            console.log('Creating row for guess:', guess);
+            return `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>${guess.guess}</td>
+                    <td>${(guess.similarity * 100).toFixed(2)}%</td>
+                    <td>${guess.username}</td>
+                </tr>
             `;
-            return roomData;
+        }).join('');
+        
+        console.log('Setting table HTML:', rowsHTML);
+        tbody.innerHTML = rowsHTML;
+    }
+
+    // Socket.IO 이벤트 리스너
+    socket.on('room_joined', function(data) {
+        console.log('Room joined - Full data:', data);
+        if (data.players) {
+            console.log('Players data received:', data.players);
+            updatePlayerList(data.players);
+        }
+        if (data.guess_history) {
+            console.log('Guess history received:', data.guess_history);
+            updateGuessLog(data.guess_history);
+        }
+    });
+
+    socket.on('ready_to_start', function(data) {
+        console.log('Ready to start - Full data:', data);
+        if (!document.getElementById('start-button')) {
+            const startButton = document.createElement('button');
+            startButton.id = 'start-button';
+            startButton.textContent = '게임 시작';
+            startButton.onclick = function() {
+                socket.emit('start_game', { room_id: roomId });
+            };
+            const form = document.getElementById('form');
+            form.parentNode.insertBefore(startButton, form);
+        }
+    });
+
+    socket.on('game_started', function(data) {
+        console.log('Game started:', data);
+        const startButton = document.getElementById('start-button');
+        if (startButton) startButton.remove();
+        document.getElementById('form').style.display = 'block';
+        document.getElementById('error').textContent = data.message;
+    });
+
+    socket.on('guess_result', function(data) {
+        console.log('Guess result received:', data);
+        document.getElementById('error').textContent = '';
+        if (data.guess_history) {
+            console.log('Updating guess history with:', data.guess_history);
+            updateGuessLog(data.guess_history);
+        }
+    });
+
+    socket.on('game_over', function(data) {
+        console.log('Game over:', data);
+        alert(`게임 종료! 승자: ${data.winner}\n정답: ${data.word}`);
+        document.getElementById('form').style.display = 'none';
+        if (data.guess_history) {
+            updateGuessLog(data.guess_history);
+        }
+    });
+
+    socket.on('error', function(data) {
+        document.getElementById('error').textContent = data.message;
+        console.log('Error:', data.message);
+    });
+
+    // 추측 제출 이벤트
+    document.getElementById('form').addEventListener('submit', function(event) {
+        event.preventDefault();
+        const guessInput = document.getElementById('guess');
+        const guess = guessInput.value.trim();
+        
+        if (!guess) {
+            document.getElementById('error').textContent = "단어를 입력하세요";
+            return;
         }
 
-        async function getSimilarityStory(puzzleNumber) {
-            const response = await fetch(`/similarity/${puzzleNumber}`);
-            return await response.json();
+        if (guessed.has(guess)) {
+            document.getElementById('error').textContent = "이미 시도한 단어입니다";
+            return;
         }
 
-        async function submitGuess(word, puzzleNumber) {
-            const response = await fetch(`/guess/${puzzleNumber}/${word}`);
-            return await response.json();
+        console.log('Submitting guess:', guess);
+        socket.emit('submit_guess', {
+            room_id: roomId,
+            username: username,
+            guess: guess
+        });
+
+        guessed.add(guess);
+        guessInput.value = '';
+    });
+
+    // 게임 나가기
+    window.exitGame = function() {
+        console.log('Leaving room:', roomId);
+        socket.emit('leave_room', {
+            room_id: roomId,
+            username: username
+        });
+        window.location.href = '/';
+    };
+
+    // 연결 해제 시
+    socket.on('disconnect', function() {
+        console.log('Disconnected from server');
+    });
+
+    // 플레이어 퇴장 시
+    socket.on('player_left', function(data) {
+        console.log('Player left:', data);
+        if (data.players) {
+            updatePlayerList(data.players);
         }
-
-        async function init() {
-            try {
-                const roomData = await fetchRoomInfo();
-                const similarityStory = await getSimilarityStory(roomId);
-
-                $('#similarity-story').innerHTML = `
-                    Room ID: ${roomId}<br/>
-                    Top similarity: ${(similarityStory.top * 100).toFixed(2)}%<br/>
-                    Try to guess the word!
-                `;
-
-                $('#form').addEventListener('submit', async (event) => {
-                    event.preventDefault();
-                    const guess = $('#guess').value.trim();
-                    if (!guess || guessed.has(guess)) return;
-
-                    const data = await submitGuess(guess, roomId);
-                    if (data.error) {
-                        $('#error').textContent = data.error;
-                        return;
-                    }
-
-                    guessed.add(guess);
-                    guesses.push([data.similarity, guess, data.rank, guesses.length + 1]);
-                    updateLog();
-                    $('#guess').value = "";
-                });
-            } catch (error) {
-                console.error(error);
-            }
-        }
-
-        function updateLog() {
-            const table = $('#guesses');
-            table.innerHTML = `<tr><th>#</th><th>Word</th><th>Similarity</th><th>Rank</th></tr>`;
-            guesses.forEach(([similarity, word, rank, index]) => {
-                const row = `<tr><td>${index}</td><td>${word}</td><td>${similarity.toFixed(2)}</td><td>${rank}</td></tr>`;
-                table.innerHTML += row;
-            });
-        }
-
-        function exitGame() {
-            // WebSocket 연결 종료 및 방 나가기 이벤트 발생
-            socket.emit('leave', { room_id: roomId });
-            
-            // 메인 페이지로 리다이렉트
-            window.location.href = '/';
-        }
-
-        init();
+    });
+});
     </script>
 </body>
 </html>

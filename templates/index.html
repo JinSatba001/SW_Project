@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>단어 유사도 추측 게임</title>
-
+    <!-- Socket.IO 스크립트 추가 -->
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <link rel="icon" href="/assets/favicon.ico" sizes="any">
 
     <style>
@@ -223,8 +224,18 @@
             }
         });
 
-        // 초기 방 목록 로드
-        loadRooms();
+        // 초기 방 목록 로드 함수 추가
+        async function loadRooms() {
+            try {
+                const response = await fetch('/api/rooms');
+                if (response.ok) {
+                    const rooms = await response.json();
+                    updateRoomList(rooms);
+                }
+            } catch (error) {
+                console.error('방 목록 로드 실패:', error);
+            }
+        }
     </script>
 </body>
 </html>
