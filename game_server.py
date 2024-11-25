@@ -4,6 +4,8 @@ import random
 import os
 import word2vec
 
+from flask import Flask, render_template, jsonify, request
+
 app = Flask(__name__, 
     template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'app', 'templates'),
     static_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'app', 'static')
@@ -16,7 +18,25 @@ games = {}
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', rooms=games)
+
+#로그인, 로그아웃 버튼 둘다 login으로 이동하게 해둠
+@app.route('/login')
+def login():
+    return render_template('login.html') 
+
+@app.route('/logout')
+def logout():
+    return render_template('login.html')
+
+#room 생성시 game.html로 넘어감
+@app.route('/room/<room_id>')
+def room_detail(room_id):
+    if room_id not in games:
+        return "Room not found", 404
+    
+    return render_template('game.html', room=games[room_id])
+
 
 @socketio.on('create_room')
 def handle_create_room(data):
@@ -126,6 +146,32 @@ def handle_leave_room(data):
             del games[room_id]
         else:
             emit('player_left', {'username': username}, room=room_id)
+
+@app.route('/api/rooms', methods=['POST'])
+def create_room():
+    try:
+        data = request.json
+        room_name = data.get('name')
+        username = data.get('username')
+
+        if not room_name or not username:
+            return jsonify({'status': 'error', 'message': '방 이름과 사용자 이름이 필요합니다.'}), 400
+
+        room_id = str(len(games) + 1)
+        games[room_id] = {
+            'name': room_name,
+            'players': [username],
+            'started': False,
+            'scores': {}
+        }
+
+        return jsonify({'status': 'success', 'room_id': room_id}), 200
+    except Exception as e:
+        print(f"Error creating room: {e}")
+        return jsonify({'status': 'error', 'message': '방 생성 중 오류 발생'}), 500
+    
+
+
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=8899, debug=True)
