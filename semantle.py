@@ -1,260 +1,212 @@
+import os
 import pickle
-import random
-from datetime import date, datetime
-from functools import wraps
+from flask import Flask, jsonify, request, session, render_template, redirect, url_for, flash
+from redis import Redis, ConnectionError, TimeoutError
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_cors import CORS
 
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
-from flask import (
-    Flask,
-    send_file,
-    send_from_directory,
-    jsonify,
-    render_template,
-    request,
-    redirect,
-    url_for,
-    session,
-    flash
-)
-from pytz import utc, timezone
-from flask_socketio import SocketIO, emit, join_room, leave_room
-from redis import Redis, ConnectionPool
-from redis.exceptions import ConnectionError, TimeoutError
-from redis.retry import Retry
-from redis.backoff import ExponentialBackoff
-
-import hashlib
-import word2vec
-from process_similar import get_nearest
-
-
+# Flask 초기화
 app = Flask(__name__)
-app.secret_key = 'your-secret-key'
-redis_client = Redis(host='redis', port=6379, db=0)
-socketio = SocketIO(app)
+CORS(app)
+app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key')
 
-rooms = {}
+# Redis 설정 및 초기화
+def get_redis_client():
+    try:
+        client = Redis(
+            host=os.getenv('REDIS_HOST', 'redis'),  # localhost 대신 redis 사용
+            port=int(os.getenv('REDIS_PORT', 6379)),
+            decode_responses=False,  # pickle 사용시 False로 설정
+            socket_timeout=5
+        )
+        client.ping()
+        print("Redis 연결 성공!")
+        return client
+    except (ConnectionError, TimeoutError) as e:
+        print(f"Redis 연결 실패: {str(e)}")
+        return None
 
-print("loading valid nearest")
-with open('data/valid_nearest.dat', 'rb') as f:
-    valid_nearest_words, valid_nearest_vecs = pickle.load(f)
-with open('data/secrets.txt', 'r', encoding='utf-8') as f:
-    secrets = [l.strip() for l in f.readlines()]
-print("initializing nearest words for solutions")
-app.secrets = dict()
-app.nearests = dict()
+redis_client = get_redis_client()
 
-# 고정된 puzzle_number 사용
-puzzle_number = 0  # 또는 원하는 시작 번호
+def check_redis():
+    try:
+        if redis_client is None:
+            print("Redis 클라이언트가 초기화되지 않았습니다.")
+            return
+        
+        redis_client.ping()
+        print("Redis 연결 성공")
+        
+        # Redis에 저장된 모든 사용자 확인
+        all_users = redis_client.hgetall("users")
+        print(f"저장된 모든 사용자: {all_users}")
+    except Exception as e:
+        print(f"Redis 연결 확인 중 오류 발생: {str(e)}")
+# 사용자 데이터 관리 클래스
+class User:
+    def __init__(self, username, password_hash):
+        self.username = username
+        self.password_hash = password_hash
+    
+    def __str__(self):
+        return f"User(username={self.username})"
 
-for offset in range(-2, 2):
-    current_puzzle = puzzle_number + offset
-    secret_word = secrets[current_puzzle % len(secrets)]  # secrets 배열의 범위를 벗어나지 않도록 수정
-    app.secrets[current_puzzle] = secret_word
-    app.nearests[current_puzzle] = get_nearest(current_puzzle, secret_word, valid_nearest_words, valid_nearest_vecs)
+def save_user(username, user_data):
+    """사용자 정보를 Redis에 저장"""
+    try:
+        serialized_data = pickle.dumps(user_data)
+        print(f"저장하는 데이터: {username}, {serialized_data}")  # 디버깅
+        redis_client.hset("users", username, serialized_data)
+        
+        # 저장 직후 확인
+        saved_data = redis_client.hget("users", username)
+        print(f"저장된 데이터 확인: {saved_data}")  # 디버깅
+    except Exception as e:
+        print(f"사용자 저장 오류: {str(e)}")
 
+def get_user(username):
+    """Redis에서 사용자 정보를 가져오기"""
+    try:
+        user_data = redis_client.hget("users", username)
+        print(f"불러온 데이터: {username}, {user_data}")  # 디버깅
+        
+        if user_data:
+            try:
+                if isinstance(user_data, str):
+                    user_data = user_data.encode('latin1')
+                user_obj = pickle.loads(user_data)
+                print(f"변환된 사용자 객체: {user_obj.username}, {user_obj.password_hash}")  # 디버깅
+                return user_obj
+            except Exception as e:
+                print(f"Pickle 변환 오류: {str(e)}")  # 디버깅
+        return None
+    except Exception as e:
+        print(f"사용자 조회 오류: {str(e)}")
+        return None
 
+# API 엔드포인트들
+@app.route('/api/auth/register', methods=['POST'])
+def api_register():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
 
-@app.route('/robots.txt')
-def robots():
-    return send_file("static/assets/robots.txt")
+    if not username or not password:
+        return jsonify({"error": "사용자명과 비밀번호를 모두 입력해주세요"}), 400
 
+    if get_user(username):
+        return jsonify({"error": "이미 존재하는 사용자명입니다"}), 400
 
-@app.route("/favicon.ico")
-def send_favicon():
-    return send_file("static/assets/favicon.ico")
+    user = User(
+        username=username,
+        password_hash=generate_password_hash(password)
+    )
+    save_user(username, user)
+    return jsonify({"message": "회원가입이 완료되었습니다"}), 201
 
+@app.route('/api/auth/login', methods=['POST'])
+def api_login():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
 
-@app.route("/assets/<path:path>")
-def send_static(path):
-    return send_from_directory("static/assets", path)
+    if not username or not password:
+        return jsonify({"error": "사용자명과 비밀번호를 모두 입력해주세요"}), 400
 
+    user = get_user(username)
+    if not user or not check_password_hash(user.password_hash, password):
+        return jsonify({"error": "잘못된 사용자명 또는 비밀번호입니다"}), 401
 
-@app.route('/similarity/<int:day>')
-def get_similarity(day: int):
-    nearest_dists = sorted([v[1] for v in app.nearests[day].values()])
-    return jsonify({"top": nearest_dists[-2], "top10": nearest_dists[-11], "rest": nearest_dists[0]})
+    session['user_id'] = username
+    return jsonify({"message": "로그인 성공"}), 200
 
-# 로그인 상태 확인 데코레이터 추가
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'username' not in session:
-            return redirect(url_for('login'))
-        return f(*args, **kwargs)
-    return decorated_function
+@app.route('/api/auth/logout', methods=['POST'])
+def api_logout():
+    session.pop('user_id', None)
+    return jsonify({"message": "로그아웃 되었습니다"}), 200
 
+@app.route('/api/auth/check', methods=['GET'])
+def check_auth():
+    if 'user_id' in session:
+        return jsonify({
+            "authenticated": True,
+            "username": session['user_id']
+        })
+    return jsonify({"authenticated": False})
+
+# 웹 인터페이스 라우트들
 @app.route('/')
-def get_index():
-    return render_template('index.html', rooms=rooms, username=session.get('username'))
+def index():
+    username = session.get('user_id')
+    # 빈 rooms 딕셔너리 전달
+    rooms = {}  # 또는 실제 방 목록을 가져오는 로직
+    return render_template('index.html', username=username, rooms=rooms)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if 'username' in session:
-        return redirect(url_for('get_index'))
-        
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        
+        username = request.form.get('username')
+        password = request.form.get('password')
+
+        print(f"로그인 시도: username={username}")  # 디버깅
+
         if not username or not password:
-            flash('모든 필드를 입력하세요.', 'error')
+            flash("사용자명과 비밀번호를 모두 입력해주세요")
             return redirect(url_for('login'))
-        
-        session['username'] = username
-        flash(f'{username}님, 환영합니다!', 'success')
-        return redirect(url_for('get_index'))
-            
-        return redirect(url_for('login'))
-    
+
+        user = get_user(username)
+        print(f"조회된 사용자: {user}")  # 디버깅
+
+        if not user:
+            print("사용자를 찾을 수 없음")  # 디버깅
+            flash("잘못된 사용자명 또는 비밀번호입니다")
+            return redirect(url_for('login'))
+
+        if not check_password_hash(user.password_hash, password):
+            print("비밀번호 불일치")  # 디버깅
+            flash("잘못된 사용자명 또는 비밀번호입니다")
+            return redirect(url_for('login'))
+
+        session['user_id'] = username
+        return redirect(url_for('index'))
+
     return render_template('login.html')
 
+# 회원가입 함수 수정
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        
+        username = request.form.get('username')
+        password = request.form.get('password')
+
+        print(f"회원가입 시도: username={username}")  # 디버깅
+
         if not username or not password:
-            flash('모든 필드를 입력하세요.', 'error')
+            flash("사용자명과 비밀번호를 모두 입력해주세요")
             return redirect(url_for('register'))
-            
-        session['username'] = username
-        flash('회원가입이 완료되었습니다.', 'success')
-        return redirect(url_for('get_index'))
-    
+
+        existing_user = get_user(username)
+        print(f"기존 사용자 확인: {existing_user}")  # 디버깅
+
+        if existing_user:
+            flash("이미 존재하는 사용자명입니다")
+            return redirect(url_for('register'))
+
+        user = User(
+            username=username,
+            password_hash=generate_password_hash(password)
+        )
+        save_user(username, user)
+        print(f"새 사용자 저장 완료: {user}")  # 디버깅
+        flash("회원가입이 완료되었습니다")
+        return redirect(url_for('login'))
+
     return render_template('register.html')
 
 @app.route('/logout')
 def logout():
-    session.pop('username', None)
-    flash('로그아웃되었습니다.', 'success')
-    return redirect(url_for('login'))
+    session.pop('user_id', None)
+    return redirect(url_for('index'))
 
-@app.route('/api/rooms', methods=['POST'])
-@login_required
-def create_room():
-    data = request.get_json()
-    room_id = str(len(rooms) + 1)
-    secret_word = random.choice(secrets)
-    nearest_data = get_nearest(0, secret_word, valid_nearest_words, valid_nearest_vecs)
-    rooms[room_id] = {
-        "id": room_id,
-        "name": data['name'],  # 사용자가 입력한 방 이름 사용
-        "secret": secret_word,
-        "nearest": nearest_data,
-        "players": [{"id": session['username'], "name": session['username']}]  # 방장 추가
-    }
-    socketio.emit('rooms_update', get_room_list())  # 실시간 방 목록 업데이트
-    return jsonify({"room_id": room_id})
-
-def get_room_list():
-    """현재 방 목록을 반환"""
-    return [
-        {
-            'id': k,
-            'name': v['name'],
-            'players': len(v['players'])
-        } for k, v in rooms.items()
-    ]
-
-@app.route('/room/<string:room_id>')
-@login_required
-def room_detail(room_id):
-    """특정 방의 상세 정보"""
-    if room_id not in rooms:
-        return "Room not found", 404
-    room_data = rooms[room_id]
-    return render_template('game.html', room_id=room_id, room=room_data)
-
-@app.route('/guess/<string:room_id>/<string:word>')
-def get_room_guess(room_id, word):
-    """단어 추측"""
-    if room_id not in rooms:
-        return jsonify({"error": "Room not found"}), 404
-
-    secret_word = rooms[room_id]["secret"]
-    nearest_data = rooms[room_id]["nearest"]
-
-    if word == secret_word:
-        return jsonify({"guess": word, "sim": 1.0, "rank": "정답!"})
-
-    rtn = {"guess": word}
-    if word in nearest_data:
-        rtn["sim"] = nearest_data[word][1]
-        rtn["rank"] = nearest_data[word][0]
-    else:
-        try:
-            rtn["sim"] = similarity(secret_word, word)
-            rtn["rank"] = "1000위 이상"
-        except KeyError:
-            return jsonify({"error": "unknown"}), 404
-
-    return jsonify(rtn)
-
-
-@app.route('/giveup/<int:day>')
-def give_up(day: int):
-    if day not in app.secrets:
-        return '저런...', 404
-    else:
-        return app.secrets[day]
-
-
-@app.route('/api/rooms', methods=['GET'])
-def get_rooms():
-    """방 목록 조회"""
-    room_list = [{'id': k, 'name': v['name'], 'players': len(v['players'])} for k, v in rooms.items()]
-    return jsonify(room_list)
-
-@socketio.on('join')
-def on_join(data):
-    """방 참여"""
-    room_id = data['room_id']
-    if room_id in rooms:
-        join_room(room_id)
-        rooms[room_id]['players'].append(request.sid)
-        emit('user_joined', {'room_id': room_id}, room=room_id)
-
-
-@socketio.on('leave')
-def on_leave(data):
-    """방 나가기"""
-    room_id = data['room_id']
-    if room_id in rooms:
-        leave_room(room_id)
-        rooms[room_id]['players'].remove(request.sid)
-        
-        # 방에 남은 플레이어가 없으면 방 삭제
-        if len(rooms[room_id]['players']) == 0:
-            del rooms[room_id]
-            emit('room_closed', {'room_id': room_id}, broadcast=True)
-        else:
-            emit('user_left', {'room_id': room_id}, room=room_id)
-
-# 연결이 끊어졌을 때도 방에서 제거하는 이벤트 핸들러 추가
-@socketio.on('disconnect')
-def handle_disconnect():
-    """연결 끊김 처리"""
-    for room_id, room_data in list(rooms.items()):  # list()로 감싸서 순회 중 삭제 가능하게 함
-        if request.sid in room_data['players']:
-            room_data['players'].remove(request.sid)
-            
-            # 방에 남은 플레이어가 없으면 방 삭제
-            if len(room_data['players']) == 0:
-                del rooms[room_id]
-                emit('room_closed', {'room_id': room_id}, broadcast=True)
-            else:
-                emit('user_left', {'room_id': room_id}, room=room_id)
-
-def similarity(word1, word2):
-    """두 단어 간의 유사도를 계산하는 함수"""
-    try:
-        return word2vec.similarity(word1, word2)
-    except KeyError:
-        return 0.0
-
-
-if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)

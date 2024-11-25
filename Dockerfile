@@ -35,6 +35,9 @@ VOLUME ["/app/data"]
 
 # WebSocket 통신을 위한 포트 노출
 EXPOSE 5000
+# 템플릿 디렉토리 복사 추가
+COPY templates ./templates
+COPY semantle.py .
 
 # Gunicorn으로 실행 (eventlet 워커를 사용하여 WebSocket 지원)
-CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:5000", "semantle:app"]
+CMD ["python", "semantle.py"]
