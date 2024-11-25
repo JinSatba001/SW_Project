@@ -29,6 +29,8 @@ import word2vec
 from process_similar import get_nearest
 
 
+#커밋 용 주석
+
 app = Flask(__name__)
 app.secret_key = 'your-secret-key'
 redis_client = Redis(host='redis', port=6379, db=0)
