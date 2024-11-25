@@ -84,12 +84,13 @@
         <div class="header">
             {% if username %}
                 <span>안녕하세요, {{ username }}님!</span>
-                <button class="logout-btn" onclick="window.location.href='{{ url_for('logout') }}'">로그아웃</button>
+                <button class="logout-btn" id="logout-btn">로그아웃</button>
             {% else %}
                 <span>게임을 시작하려면 로그인이 필요합니다</span>
-                <button class="login-btn" onclick="window.location.href='{{ url_for('login') }}'">로그인하기</button>
+                <button class="login-btn" id="login-btn">로그인하기</button>
             {% endif %}
         </div>
+    
         <h1>단어 맞추기 게임</h1>
         <p>1대1 단어 맞추기! 친구와 함께 경쟁해보세요.</p>
         <div class="user-info">
@@ -117,16 +118,36 @@
             </ul>
         </div>
     </div>
-
+    
     <script>
-        // WebSocket 연결
-        const socket = io();
-
-        // 사용자 이름 관련 함수들 추가
+        document.addEventListener('DOMContentLoaded', function () {
+            // 로그아웃 버튼 처리
+            const logoutBtn = document.getElementById('logout-btn');
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', function () {
+                    window.location.href = '{{ url_for("logout") }}';
+                });
+            }
+    
+            // 로그인 버튼 처리
+            const loginBtn = document.getElementById('login-btn');
+            if (loginBtn) {
+                loginBtn.addEventListener('click', function () {
+                    window.location.href = '{{ url_for("login") }}';
+                });
+            }
+    
+            // 사용자 이름 업데이트
+            updateUsernameDisplay();
+            if (!getUsername()) {
+                setUsername();
+            }
+        });
+    
         function getUsername() {
             return localStorage.getItem('username');
         }
-
+    
         function setUsername() {
             const currentName = getUsername() || '';
             const newName = prompt("사용자 이름을 입력하세요:", currentName);
@@ -136,14 +157,13 @@
                 updateUsernameDisplay();
             }
         }
-
+    
         function updateUsernameDisplay() {
             const username = getUsername();
             const usernameDisplay = document.getElementById('username-display');
             usernameDisplay.textContent = username || '이름 설정 필요';
         }
-        
-        // 방 생성
+    
         async function createRoom() {
             const username = getUsername();
             if (!username) {
@@ -151,7 +171,7 @@
                 setUsername();
                 return;
             }
-
+    
             const roomName = prompt("방 이름을 입력하세요:");
             if (!roomName) return;
             
