@@ -1,13 +1,12 @@
-version: '3.8'
+version: '3'
 services:
   web:
     build: .
     ports:
-      - "8899:8899"
-    volumes:
-      - .:/app
-    environment:
-      - FLASK_ENV=development
-      - FLASK_DEBUG=1
-      - PYTHONUNBUFFERED=1
-    command: python game_server.py
+      - "5000:5000"
+    depends_on:
+      - redis
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379" 

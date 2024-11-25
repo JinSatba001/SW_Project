@@ -15,7 +15,18 @@ def most_similar(mat: array, idx: int, k: int) -> Tuple[array, array]:
 
 def dump_nearest(puzzle_num: int, word: str, words: List[str], mat: array, k: int = 1000) \
         -> Dict[str, Tuple[str, float]]:
-    word_idx = words.index(word)
+    if isinstance(words, dict):
+        words = list(words.keys())
+    
+    try:
+        word_idx = words.index(word)
+    except ValueError:
+        print(f"Warning: word '{word}' not found in words list")
+        return {}
+
+    import os
+    os.makedirs('data/near', exist_ok=True)
+    
     sim_idxs, sim_dists = most_similar(mat, word_idx, k + 1)
     words_a = np.array(words)
     sort_args = np.argsort(sim_dists)[::-1]
@@ -26,6 +37,7 @@ def dump_nearest(puzzle_num: int, word: str, words: List[str], mat: array, k: in
     for idx, (w, d) in enumerate(result):
         closeness[w] = (idx, d)
     closeness[word] = ("정답!", 1)
+    
     with open(f'data/near/{puzzle_num}.dat', 'wb') as f:
         pickle.dump(closeness, f)
     return closeness

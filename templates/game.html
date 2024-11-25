@@ -47,13 +47,19 @@
 </head>
 <body>
     <div class="container">
-        <h1>Word Matching Game</h1>
+        <h1>{{ room.name }}</h1>
+        <div id="room-info"></div>
         <div id="similarity-story"></div>
-        <div id="form">
+        <div class="player-list">
+            {% for player in room.players %}
+                <div class="player">{{ player.name }}</div>
+            {% endfor %}
+        </div>
+        <form id="form">
             <input placeholder="추측할 단어를 입력하세요" autocorrect="off" autocapitalize="none" autocomplete="off"
                         type="text" id="guess" autofocus>
             <button type="submit">추측하기</button>
-        </div>
+        </form>
         <div id="error" style="color: red; margin: 10px 0;"></div>
         <div class="log-area">
             <h3>Guess Log</h3>
@@ -74,7 +80,52 @@
         const $ = (id) => document.getElementById(id.substring(1));
         let guesses = [];
         let guessed = new Set();
-        const storage = window.localStorage;
+
+        // WebSocket 연결 및 이벤트 처리
+        const socket = io();
+        const roomId = '{{ room_id }}';
+
+        socket.emit('join', { room_id: roomId });
+
+        socket.on('user_joined', function(data) {
+            updatePlayerList(data.players);
+        });
+
+        socket.on('user_left', function(data) {
+            updatePlayerList(data.players);
+        });
+
+        function updatePlayerList(players) {
+            const playerList = document.querySelector('.player-list');
+            playerList.innerHTML = players.map(player => 
+                `<div class="player">${player.name}</div>`
+            ).join('');
+        }
+
+        // HTML에 플레이어 목록 표시
+        function updatePlayerDisplay() {
+            const players = game.getPlayerList();
+            document.getElementById('player1').textContent = `플레이어 1: ${players.player1}`;
+            document.getElementById('player2').textContent = `플레이어 2: ${players.player2}`;
+        }
+
+        // 현재 방 ID 추출
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomId = urlParams.get('room_id');
+
+        async function fetchRoomInfo() {
+            const response = await fetch(`/room/${roomId}`);
+            if (!response.ok) {
+                $('#room-info').textContent = "Failed to load room information.";
+                throw new Error("Room not found");
+            }
+            const roomData = await response.json();
+            $('#room-info').innerHTML = `
+                <p>Room ID: ${roomId}</p>
+                <p>Secret Word: (hidden)</p>
+            `;
+            return roomData;
+        }
 
         async function getSimilarityStory(puzzleNumber) {
             const response = await fetch(`/similarity/${puzzleNumber}`);
@@ -87,28 +138,35 @@
         }
 
         async function init() {
-            const puzzleNumber = 1; // Replace with dynamic puzzle logic
-            const similarityStory = await getSimilarityStory(puzzleNumber);
-            $('#similarity-story').innerHTML = `
-                Today's puzzle: #${puzzleNumber}<br/>
-                Top similarity: ${(similarityStory.top * 100).toFixed(2)}%<br/>
-                Try to guess the word!
-            `;
+            try {
+                const roomData = await fetchRoomInfo();
+                const similarityStory = await getSimilarityStory(roomId);
 
-            $('#form').addEventListener('submit', async (event) => {
-                event.preventDefault();
-                const guess = $('#guess').value.trim();
-                if (!guess || guessed.has(guess)) return;
-                const data = await submitGuess(guess, puzzleNumber);
-                if (data.error) {
-                    $('#error').textContent = data.error;
-                    return;
-                }
-                guessed.add(guess);
-                guesses.push([data.similarity, guess, data.rank, guesses.length + 1]);
-                updateLog();
-                $('#guess').value = "";
-            });
+                $('#similarity-story').innerHTML = `
+                    Room ID: ${roomId}<br/>
+                    Top similarity: ${(similarityStory.top * 100).toFixed(2)}%<br/>
+                    Try to guess the word!
+                `;
+
+                $('#form').addEventListener('submit', async (event) => {
+                    event.preventDefault();
+                    const guess = $('#guess').value.trim();
+                    if (!guess || guessed.has(guess)) return;
+
+                    const data = await submitGuess(guess, roomId);
+                    if (data.error) {
+                        $('#error').textContent = data.error;
+                        return;
+                    }
+
+                    guessed.add(guess);
+                    guesses.push([data.similarity, guess, data.rank, guesses.length + 1]);
+                    updateLog();
+                    $('#guess').value = "";
+                });
+            } catch (error) {
+                console.error(error);
+            }
         }
 
         function updateLog() {
@@ -121,7 +179,11 @@
         }
 
         function exitGame() {
-            window.location.href = "index.html";
+            // WebSocket 연결 종료 및 방 나가기 이벤트 발생
+            socket.emit('leave', { room_id: roomId });
+            
+            // 메인 페이지로 리다이렉트
+            window.location.href = '/';
         }
 
         init();
