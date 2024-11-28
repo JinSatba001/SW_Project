@@ -1,192 +1,134 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Word Matching Game - Play</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            background-color: #f4f4f9;
-            margin: 0;
-            padding: 0;
-        }
-        .container {
-            padding: 20px;
-            max-width: 800px;
-            margin: 20px auto;
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-        }
-        .player-area, .chatbox, .log-area {
-            margin-top: 20px;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            background: #fafafa;
-        }
-        .log-area {
-            max-height: 200px;
-            overflow-y: auto;
-        }
-        button {
-            background-color: #007BFF;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-            border-radius: 5px;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>{{ room.name }}</h1>
-        <div id="room-info"></div>
-        <div id="similarity-story"></div>
-        <div class="player-list">
-            {% for player in room.players %}
-                <div class="player">{{ player.name }}</div>
-            {% endfor %}
+{% extends "base.html" %}
+
+{% block title %}게임 플레이{% endblock %}
+
+{% block styles %}
+<style>
+    .player-area, .chatbox, .log-area {
+        margin-top: 20px;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        background: #fafafa;
+    }
+    .log-area {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    #guess-form {
+        margin: 20px 0;
+    }
+    #guess {
+        padding: 10px;
+        font-size: 16px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        margin-right: 10px;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    th, td {
+        padding: 8px;
+        border-bottom: 1px solid #ddd;
+        text-align: center;
+    }
+    th {
+        background-color: #f8f9fa;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>{{ room.name if room else "게임방 선택" }}</h1>
+    
+    {% if room %}
+        <div class="player-area">
+            <h3>참가자 목록</h3>
+            <ul id="players">
+                {% for player in room.players %}
+                    <li>{{ player }}</li>
+                {% endfor %}
+            </ul>
         </div>
-        <form id="form">
-            <input placeholder="추측할 단어를 입력하세요" autocorrect="off" autocapitalize="none" autocomplete="off"
-                        type="text" id="guess" autofocus>
-            <button type="submit">추측하기</button>
+
+        <form id="guess-form">
+            <input type="text" id="guess" placeholder="추측할 단어를 입력하세요">
+            <button type="submit" class="btn btn-primary">추측하기</button>
         </form>
-        <div id="error" style="color: red; margin: 10px 0;"></div>
+
         <div class="log-area">
-            <h3>Guess Log</h3>
-            <table id="guesses" style="width: 100%; text-align: left;">
+            <table id="guesses">
                 <tr>
                     <th>#</th>
-                    <th>Word</th>
-                    <th>Similarity</th>
-                    <th>Rank</th>
+                    <th>단어</th>
+                    <th>유사도</th>
+                    <th>순위</th>
                 </tr>
             </table>
         </div>
-        <button onclick="exitGame()">Exit</button>
-    </div>
-    <script>
-        'use strict';
+    {% else %}
+        <div class="room-list">
+            <p>참여할 수 있는 게임방이 없습니다.</p>
+            <button onclick="window.location.href='/'" class="btn btn-primary">메인으로 돌아가기</button>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
 
-        const $ = (id) => document.getElementById(id.substring(1));
-        let guesses = [];
-        let guessed = new Set();
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+<script>
+    const socket = io();
+    const guesses = [];
+    const guessed = new Set();
 
-        // WebSocket 연결 및 이벤트 처리
-        const socket = io();
-        const roomId = '{{ room_id }}';
-
-        socket.emit('join', { room_id: roomId });
-
-        socket.on('user_joined', function(data) {
-            updatePlayerList(data.players);
+    document.getElementById('guess-form')?.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const guess = document.getElementById('guess').value.trim();
+        
+        if (!guess || guessed.has(guess)) return;
+        
+        socket.emit('make_guess', {
+            room_id: '{{ room_id }}',
+            guess: guess
         });
+        
+        document.getElementById('guess').value = '';
+    });
 
-        socket.on('user_left', function(data) {
-            updatePlayerList(data.players);
+    socket.on('guess_result', function(data) {
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+
+        guessed.add(data.guess);
+        guesses.push([data.similarity, data.guess, guesses.length + 1]);
+        updateGuessLog();
+    });
+
+    socket.on('player_left', function(data) {
+        const playersList = document.getElementById('players');
+        playersList.innerHTML = data.players.map(player => 
+            `<li>${player}</li>`
+        ).join('');
+    });
+
+    function updateGuessLog() {
+        const table = document.getElementById('guesses');
+        table.innerHTML = `<tr><th>#</th><th>단어</th><th>유사도</th><th>순위</th></tr>`;
+        guesses.forEach(([similarity, word, index]) => {
+            table.innerHTML += `
+                <tr>
+                    <td>${index}</td>
+                    <td>${word}</td>
+                    <td>${(similarity * 100).toFixed(2)}%</td>
+                    <td>${index}</td>
+                </tr>`;
         });
-
-        function updatePlayerList(players) {
-            const playerList = document.querySelector('.player-list');
-            playerList.innerHTML = players.map(player => 
-                `<div class="player">${player.name}</div>`
-            ).join('');
-        }
-
-        // HTML에 플레이어 목록 표시
-        function updatePlayerDisplay() {
-            const players = game.getPlayerList();
-            document.getElementById('player1').textContent = `플레이어 1: ${players.player1}`;
-            document.getElementById('player2').textContent = `플레이어 2: ${players.player2}`;
-        }
-
-        // 현재 방 ID 추출
-        const urlParams = new URLSearchParams(window.location.search);
-        const roomId = urlParams.get('room_id');
-
-        async function fetchRoomInfo() {
-            const response = await fetch(`/room/${roomId}`);
-            if (!response.ok) {
-                $('#room-info').textContent = "Failed to load room information.";
-                throw new Error("Room not found");
-            }
-            const roomData = await response.json();
-            $('#room-info').innerHTML = `
-                <p>Room ID: ${roomId}</p>
-                <p>Secret Word: (hidden)</p>
-            `;
-            return roomData;
-        }
-
-        async function getSimilarityStory(puzzleNumber) {
-            const response = await fetch(`/similarity/${puzzleNumber}`);
-            return await response.json();
-        }
-
-        async function submitGuess(word, puzzleNumber) {
-            const response = await fetch(`/guess/${puzzleNumber}/${word}`);
-            return await response.json();
-        }
-
-        async function init() {
-            try {
-                const roomData = await fetchRoomInfo();
-                const similarityStory = await getSimilarityStory(roomId);
-
-                $('#similarity-story').innerHTML = `
-                    Room ID: ${roomId}<br/>
-                    Top similarity: ${(similarityStory.top * 100).toFixed(2)}%<br/>
-                    Try to guess the word!
-                `;
-
-                $('#form').addEventListener('submit', async (event) => {
-                    event.preventDefault();
-                    const guess = $('#guess').value.trim();
-                    if (!guess || guessed.has(guess)) return;
-
-                    const data = await submitGuess(guess, roomId);
-                    if (data.error) {
-                        $('#error').textContent = data.error;
-                        return;
-                    }
-
-                    guessed.add(guess);
-                    guesses.push([data.similarity, guess, data.rank, guesses.length + 1]);
-                    updateLog();
-                    $('#guess').value = "";
-                });
-            } catch (error) {
-                console.error(error);
-            }
-        }
-
-        function updateLog() {
-            const table = $('#guesses');
-            table.innerHTML = `<tr><th>#</th><th>Word</th><th>Similarity</th><th>Rank</th></tr>`;
-            guesses.forEach(([similarity, word, rank, index]) => {
-                const row = `<tr><td>${index}</td><td>${word}</td><td>${similarity.toFixed(2)}</td><td>${rank}</td></tr>`;
-                table.innerHTML += row;
-            });
-        }
-
-        function exitGame() {
-            // WebSocket 연결 종료 및 방 나가기 이벤트 발생
-            socket.emit('leave', { room_id: roomId });
-            
-            // 메인 페이지로 리다이렉트
-            window.location.href = '/';
-        }
-
-        init();
-    </script>
-</body>
-</html>
+    }
+</script>
+{% endblock %}

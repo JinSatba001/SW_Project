@@ -1,29 +1,30 @@
+version: '3.8'
+
 services:
   semantle:
     build: .
     ports:
-      - "5000:5000" 
+      - "5000:5000"
     depends_on:
       - redis
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - SECRET_KEY=your-secret-key
+      - REDIS_URL=redis://redis:6379/0
     networks:
       - semantle_network
 
   redis:
-    image: redis:7.4.1
+    image: redis:latest
     ports:
       - "6379:6379"
-    networks:
-      - semantle_network
     volumes:
       - redis_data:/data
-
-volumes:
-  redis_data:
+    command: redis-server --appendonly yes
+    networks:
+      - semantle_network
 
 networks:
   semantle_network:
     driver: bridge
+
+volumes:
+  redis_data:
