@@ -37,4 +37,4 @@ VOLUME ["/app/data"]
 EXPOSE 5000
 
 # Gunicorn으로 실행 (eventlet 워커를 사용하여 WebSocket 지원)
-CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:5000", "semantle:app"]
+CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:5000", "game_server:app"]

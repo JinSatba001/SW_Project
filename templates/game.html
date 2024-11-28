@@ -156,15 +156,11 @@
 
     // Socket.IO 이벤트 리스너
     socket.on('room_joined', function(data) {
-        console.log('Room joined - Full data:', data);
-        if (data.players) {
-            console.log('Players data received:', data.players);
-            updatePlayerList(data.players);
-        }
-        if (data.guess_history) {
-            console.log('Guess history received:', data.guess_history);
-            updateGuessLog(data.guess_history);
-        }
+        console.log('Room joined:', data);
+        // 자동으로 게임 시작
+        socket.emit('start_game', { room_id: roomId });
+        // 입력 폼 표시
+        document.getElementById('form').style.display = 'block';
     });
 
     socket.on('ready_to_start', function(data) {
@@ -190,12 +186,18 @@
     });
 
     socket.on('guess_result', function(data) {
-        console.log('Guess result received:', data);
-        document.getElementById('error').textContent = '';
-        if (data.guess_history) {
-            console.log('Updating guess history with:', data.guess_history);
-            updateGuessLog(data.guess_history);
-        }
+        console.log('Guess result:', data);
+        const tbody = document.getElementById('guesses').getElementsByTagName('tbody')[0];
+        if (!tbody) return;
+
+        // 새 행 추가
+        const row = tbody.insertRow();
+        row.innerHTML = `
+            <td>${tbody.rows.length}</td>
+            <td>${data.guess}</td>
+            <td>${(data.similarity * 100).toFixed(2)}%</td>
+            <td>${data.username}</td>
+        `;
     });
 
     socket.on('game_over', function(data) {
@@ -212,7 +214,7 @@
         console.log('Error:', data.message);
     });
 
-    // 추측 제출 이벤트
+    /* 추측 제출 이벤트
     document.getElementById('form').addEventListener('submit', function(event) {
         event.preventDefault();
         const guessInput = document.getElementById('guess');
@@ -237,6 +239,19 @@
 
         guessed.add(guess);
         guessInput.value = '';
+    });
+    */
+
+    document.getElementById('form').addEventListener('submit', function(event) {
+        event.preventDefault();
+        const guess = document.getElementById('guess').value.trim();
+        console.log('Submitting guess:', guess);
+        socket.emit('submit_guess', {
+            room_id: roomId,
+            username: username,
+            guess: guess
+        });
+        document.getElementById('guess').value = '';
     });
 
     // 게임 나가기

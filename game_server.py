@@ -1,12 +1,12 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, redirect, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import random
 import os
 from word2vec import get_random_word, calculate_similarity, is_valid_word
 
 app = Flask(__name__, 
-    template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'app', 'templates'),
-    static_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'app', 'static')
+    template_folder='templates',
+    static_folder='static'
 )
 app.config['SECRET_KEY'] = 'your-secret-key'
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -14,16 +14,44 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # 게임 상태 저장
 games = {}
 
+# index 라우트 하나로 통합
 @app.route('/')
 def index():
     return render_template('index.html')
 
+# game 라우트
 @app.route('/game')
 def game():
     room_id = request.args.get('room_id')
     if room_id and room_id in games:
         return render_template('game.html', room=games[room_id])
     return redirect('/')
+
+# 방 생성 API
+@app.route('/api/rooms', methods=['POST'])
+def create_room_api():
+    try:
+        data = request.get_json()
+        room_id = str(len(games) + 1)
+        games[room_id] = {
+            'id': room_id,
+            'name': data.get('name', f'Room {room_id}'),
+            'players': {},
+            'word': None,
+            'started': False,
+            'scores': {},
+            'guess_history': [],
+            'ready_players': set()
+        }
+        return jsonify({
+            'status': 'success',
+            'room_id': room_id
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 400
 
 @socketio.on('create_room')
 def handle_create_room(data):
@@ -63,10 +91,6 @@ def handle_join_room(data):
         if player_id in game['players']:
             emit('error', {'message': '이미 참여 중인 플레이어입니다.'})
             return
-            
-        if len(game['players']) >= 2:
-            emit('error', {'message': '방이 가득 찼습니다.'})
-            return
         
         # 플레이어 추가
         join_room(room_id)
@@ -78,7 +102,6 @@ def handle_join_room(data):
         
         # 현재 플레이어 목록
         current_players = [p['name'] for p in game['players'].values()]
-        print(f"Players in room {room_id}: {current_players}")
         
         # 방 정보 전송
         emit('room_joined', {
@@ -87,12 +110,11 @@ def handle_join_room(data):
             'guess_history': game['guess_history']
         }, room=room_id)
         
-        # 두 명이 모두 참가했을 때 게임 시작 가능 상태
-        if len(game['players']) == 2:
-            emit('ready_to_start', {
-                'message': '게임을 시작할 수 있습니다.',
-                'players': current_players
-            }, room=room_id)
+        # 한 명이어도 게임 시작 가능하도록 수정
+        emit('ready_to_start', {
+            'message': '게임을 시작할 수 있습니다.',
+            'players': current_players
+        }, room=room_id)
             
     except Exception as e:
         print(f"Error in join_room: {e}")
@@ -107,11 +129,7 @@ def handle_start_game(data):
             return
         
         game = games[room_id]
-        
-        if len(game['players']) < 2:
-            emit('error', {'message': '플레이어가 부족합니다.'})
-            return
-        
+    
         if game['started']:
             emit('error', {'message': '이미 게임이 시작되었습니다.'})
             return
@@ -120,7 +138,6 @@ def handle_start_game(data):
         game['word'] = get_random_word()
         game['started'] = True
         game['guess_history'] = []
-        print(f"Game started in room {room_id} with word: {game['word']}")
         
         emit('game_started', {
             'message': '게임이 시작되었습니다!',
