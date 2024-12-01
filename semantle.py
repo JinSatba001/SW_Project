@@ -12,6 +12,7 @@ import json
 import random
 import uuid
 from functools import wraps
+from word2vec import calculate_similarity, get_random_word
 
 # Flask 앱 초기화
 app = Flask(__name__)
@@ -148,7 +149,7 @@ def index():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if 'user_id' in session:  # 이미 로그인된 경우
-        return redirect(url_for('game'))
+        return redirect(url_for('index'))
         
     if request.method == 'POST':
         username = request.form.get('username')
@@ -158,7 +159,12 @@ def login():
         if user and check_password_hash(user['password'], password):
             session['user_id'] = username
             session.permanent = True  # 세션 유지
-            return redirect(url_for('game'))
+            
+            # next 파라미터가 있으면 해당 페이지로, 없으면 메인으로
+            next_page = request.args.get('next')
+            if next_page and next_page.startswith('/'):  # 보안을 위한 체크
+                return redirect(next_page)
+            return redirect(url_for('index'))
         
         flash('잘못된 사용자명 또는 비밀번호입니다')
     return render_template('login.html')
@@ -181,6 +187,9 @@ def register():
 def game():
     username = session.get('user_id')
     room_id = request.args.get('room')
+    
+    if not username:
+        return redirect(url_for('login', next=request.path))
     
     if room_id and room_id in rooms:
         return render_template('game.html',
@@ -207,16 +216,14 @@ def logout():
 @app.route('/room/<room_id>')
 @login_required
 def room(room_id):
-    username = session.get('user_id')
-    
     if room_id not in rooms:
-        flash('존재하지 않는 방입니다')
+        flash('존재하지 않는 방입니다.')
         return redirect(url_for('index'))
         
     return render_template('game.html',
-        room=rooms[room_id],
-        room_id=room_id,
-        username=username)
+                         room_id=room_id,
+                         room_name=rooms[room_id]['name'],  # 방 이름 전달
+                         username=session.get('user_id'))
 
 @app.route('/api/rooms', methods=['POST'])
 @login_required
@@ -224,17 +231,45 @@ def create_room():
     username = session.get('user_id')
     data = request.get_json()
     room_id = str(uuid.uuid4())
+    room_name = data.get('name', f"{username}의 방")
     
     rooms[room_id] = {
         'id': room_id,
-        'name': data.get('name', f"{username}의 방"),
+        'name': room_name,  # 방 이름 저장
         'players': [username],
-        'word': get_random_word(),
+        'word': None,
         'created_at': datetime.now().isoformat(),
-        'status': 'waiting'
+        'status': 'waiting',
+        'started': False,
+        'guess_history': [],
+        'scores': {}
     }
     
+    broadcast_rooms_update()  # 방 생성 시 목록 업데이트
     return jsonify({'room_id': room_id})
+
+@app.route('/api/rooms', methods=['GET'])
+def get_rooms():
+    rooms_data = [{
+        'id': room_id,
+        'name': room['name'],
+        'players': room['players']
+    } for room_id, room in rooms.items()]
+    return jsonify(rooms_data)
+
+def broadcast_rooms_update():
+    """방 목록 업데이트를 모든 클라이언트에게 전송"""
+    try:
+        rooms_data = [{
+            'id': room_id,
+            'name': room['name'],
+            'players': room['players'],
+            'status': room.get('status', 'waiting')
+        } for room_id, room in rooms.items()]
+        
+        socketio.emit('rooms_update', rooms_data)
+    except Exception as e:
+        print(f"Error in broadcast_rooms_update: {e}")
 
 # Socket.IO 초기화
 socketio = SocketIO(
@@ -254,86 +289,220 @@ def handle_connect():
 def handle_disconnect():
     print('Client disconnected')
 
-@socketio.on('join_game')
+@socketio.on('join_room')
 def handle_join(data):
     username = session.get('user_id')
     if not username:
         return False
     
-    room_id = data.get('room_id', str(uuid.uuid4()))
+    room_id = data.get('room_id')
+    if not room_id or room_id not in rooms:
+        emit('error', {'message': '잘못된 방 정보입니다.'})
+        return False
     
-    # 새로운 방 생성 또는 기존 방 참가
-    if room_id not in rooms:
-        rooms[room_id] = {
-            'players': [],
-            'word': get_random_word(),
-            'created_at': datetime.now().isoformat(),
-            'status': 'waiting'  # waiting, playing, finished
-        }
+    game = rooms[room_id]
     
     # 플레이어가 아직 방에 없다면 추가
-    if username not in rooms[room_id]['players']:
-        rooms[room_id]['players'].append(username)
+    if username not in game['players']:
+        game['players'].append(username)
     
     join_room(room_id)
     
+    # 방 정보 전송
     emit('room_joined', {
         'room_id': room_id,
-        'username': username,
-        'players': rooms[room_id]['players'],
-        'status': rooms[room_id]['status']
+        'name': game['name'],
+        'players': game['players'],
+        'started': game.get('started', False),
+        'guess_history': game.get('guess_history', [])
     }, room=room_id)
     
-    broadcast_rooms_update()  # 방 목록 업데이트 브로드캐스트
+    broadcast_rooms_update()
     return True
 
 @socketio.on('leave_game')
 def handle_leave(data):
-    username = session.get('user_id')
-    room_id = data.get('room_id')
-    
-    if room_id in rooms and username in rooms[room_id]['players']:
-        rooms[room_id]['players'].remove(username)
-        leave_room(room_id)
+    try:
+        username = data.get('username') or session.get('user_id')
+        room_id = data.get('room_id')
         
-        if not rooms[room_id]['players']:
-            del rooms[room_id]
-            socketio.emit('room_closed', {'room_id': room_id})
-        else:
-            emit('player_left', {
-                'username': username,
-                'players': rooms[room_id]['players']
-            }, room=room_id)
-        
-        broadcast_rooms_update()  # 방 목록 업데이트 브로드캐스트
+        if not room_id or room_id not in rooms:
+            return
+            
+        game = rooms[room_id]
+        if username in game['players']:
+            # 플레이어 제거
+            game['players'].remove(username)
+            leave_room(room_id)
+            
+            # 방에 아무도 없으면 방 삭제
+            if not game['players']:
+                del rooms[room_id]
+                socketio.emit('room_closed', {'room_id': room_id})
+            else:
+                # 방장이 나간 경우 다음 사람에게 방장 권한 이전
+                new_host = game['players'][0] if game['players'] else None
+                emit('player_left', {
+                    'username': username,
+                    'players': game['players'],
+                    'is_host': new_host
+                }, room=room_id)
+                
+                # 게임 중이었다면 게임 초기화
+                if game.get('started', False):
+                    game.update({
+                        'started': False,
+                        'word': None,
+                        'guess_history': [],
+                        'scores': {}
+                    })
+                    emit('game_reset', {
+                        'message': '플레이어가 나가서 게임이 초기화되었습니다.'
+                    }, room=room_id)
+            
+            # 방 목록 업데이트를 모든 클라이언트에게 브로드캐스트
+            broadcast_rooms_update()
+            
+            return {'success': True}
+            
+    except Exception as e:
+        print(f"Error in leave_game: {e}")
+        return {'success': False, 'error': str(e)}
 
-@socketio.on('make_guess')
+@socketio.on('submit_guess')
 def handle_guess(data):
-    username = session.get('user_id')
-    room_id = data.get('room_id')
-    guess = data.get('guess')
-    
-    if not all([username, room_id, guess]) or room_id not in rooms:
-        return False
-    
-    result = {
-        'username': username,
-        'guess': guess,
-        'correct': guess == rooms[room_id]['word'],
-        'similarity': calculate_similarity(guess, rooms[room_id]['word'])
-    }
-    
-    emit('guess_result', result, room=room_id)
-    return True
+    try:
+        room_id = data.get('room_id')
+        username = data.get('username')
+        guess = data.get('guess', '').strip()
+        
+        if not all([room_id, username, guess]) or room_id not in rooms:
+            emit('error', {'message': '잘못된 요청입니다.'})
+            return
+        
+        game = rooms[room_id]
+        
+        if not game['started']:
+            emit('error', {'message': '게임이 시작되지 않았습니다.'})
+            return
+        
+        # 턴 체크
+        current_turn = len(game['guess_history']) % len(game['players'])
+        current_player = game['players'][current_turn]
+        
+        if username != current_player:
+            emit('error', {'message': f'{current_player}님의 차례입니다.'})
+            return
+            
+        # 비밀 명령어 처리
+        if guess in ['/정답', '!정답']:
+            emit('show_answer', {
+                'word': game['word'],
+                'message': f'정답은 "{game["word"]}" 입니다.'
+            }, room=room_id)
+            return
+            
+        # 이미 시도한 단어인지 확인
+        if any(record['guess'] == guess for record in game['guess_history']):
+            emit('error', {'message': '이미 시도한 단어입니다.'})
+            return
+            
+        # word2vec의 유사도 계산 함수 사용
+        target_word = game['word']
+        similarity = calculate_similarity(target_word, guess)  # word2vec의 함수 사용
+        
+        # 추측 기록 저장
+        guess_record = {
+            'username': username,
+            'guess': guess,
+            'similarity': similarity,
+            'timestamp': datetime.now().isoformat(),
+            'turn': len(game['guess_history']) + 1
+        }
+        game['guess_history'].append(guess_record)
+        
+        # 정답 여부 확인
+        if guess == target_word:
+            # 승리 점수 부여
+            game['scores'][username] = game['scores'].get(username, 0) + 10
+            emit('game_over', {
+                'winner': username,
+                'word': target_word,
+                'scores': game['scores'],
+                'guess_history': game['guess_history']
+            }, room=room_id)
+            
+            # 게임 초기화
+            game.update({
+                'started': False,
+                'word': None,
+                'guess_history': [],
+                'scores': {}
+            })
+            
+            # 게임 종료 후 상태 업데이트
+            emit('game_reset', {
+                'message': '게임이 종료되었습니다. 새 게임을 시작할 수 있습니다.'
+            }, room=room_id)
+            
+        else:
+            # 게임 진행 중일 때 다음 플레이어 턴 알림 추가
+            next_turn = (current_turn + 1) % len(game['players'])
+            next_player = game['players'][next_turn]
+            
+            emit('guess_result', {
+                'username': username,
+                'guess': guess,
+                'similarity': similarity,
+                'scores': game['scores'],
+                'guess_history': game['guess_history'],
+                'next_player': next_player  # 다음 플레이어 정보 추가
+            }, room=room_id)
+            
+    except Exception as e:
+        print(f"Error in submit_guess: {e}")
+        emit('error', {'message': f'추측 처리 중 오류 발생: {str(e)}'})
 
-def broadcast_rooms_update():
-    rooms_data = [{
-        'id': room_id,
-        'name': room['name'],
-        'players': room['players']
-    } for room_id, room in rooms.items()]
-    
-    socketio.emit('rooms_update', rooms_data)
+@socketio.on('start_game')
+def handle_start_game(data):
+    try:
+        room_id = data.get('room_id')
+        username = session.get('user_id')
+        
+        if not room_id or room_id not in rooms:
+            emit('error', {'message': '잘못된 방 정보입니다.'})
+            return
+            
+        game = rooms[room_id]
+        
+        if game['started']:
+            emit('error', {'message': '이미 게임이 시작되었습니다.'})
+            return
+            
+        # 2명이 아니면 게임 시작 불가
+        if len(game['players']) != 2:
+            emit('error', {'message': '게임을 시작하려면 2명의 플레이어가 필요합니다.'})
+            return
+            
+        # 게임 시작 처리
+        game['started'] = True
+        game['word'] = get_random_word()
+        game['guess_history'] = []
+        game['scores'] = {}
+        
+        # 첫 번째 플레이어 턴 설정
+        first_player = game['players'][0]
+        
+        # 모든 참가자에게 게임 시작 알림
+        emit('game_started', {
+            'message': '게임이 시작되었습니다!',
+            'word_length': len(game['word']),
+            'first_player': first_player  # 첫 번째 플레이어 정보 추가
+        }, room=room_id)
+        
+    except Exception as e:
+        print(f"Error in start_game: {e}")
+        emit('error', {'message': f'게임 시작 중 오류 발생: {str(e)}'})
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0')

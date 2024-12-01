@@ -1,12 +1,27 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: game-server-service
+  name: flask-service
 spec:
+  type: NodePort
   selector:
-    app: game-server
+    app: flask-app
   ports:
     - protocol: TCP
-      port: 80         # 외부에 노출될 포트
-      targetPort: 5000 # Flask 컨테이너의 포트
-  type: LoadBalancer  # 외부에서 접근 가능하도록 설정
+      port: 5000         # 서비스 포트
+      targetPort: 5000   # 컨테이너 포트
+      nodePort: 30000    # 외부 접근용 포트
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+spec:
+  selector:
+    app: redis
+  ports:
+    - protocol: TCP
+      port: 6379
+      targetPort: 6379

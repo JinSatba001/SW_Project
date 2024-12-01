@@ -4,9 +4,23 @@
 
 {% block styles %}
 <style>
-    .player-area, .chatbox, .log-area {
+    body {
+        font-family: Arial, sans-serif;
+        background-color: #f4f4f9;
+        margin: 0;
+        padding: 20px;
+    }
+    .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    }
+    .player-area, .log-area {
         margin-top: 20px;
-        padding: 10px;
+        padding: 15px;
         border: 1px solid #ddd;
         border-radius: 5px;
         background: #fafafa;
@@ -17,118 +31,450 @@
     }
     #guess-form {
         margin: 20px 0;
+        display: flex;
+        gap: 10px;
     }
     #guess {
+        flex: 1;
         padding: 10px;
         font-size: 16px;
         border: 1px solid #ddd;
         border-radius: 5px;
-        margin-right: 10px;
+    }
+    button {
+        background-color: #007BFF;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+    button:hover {
+        background-color: #0056b3;
     }
     table {
         width: 100%;
         border-collapse: collapse;
+        margin-top: 10px;
     }
     th, td {
-        padding: 8px;
+        padding: 10px;
+        text-align: left;
         border-bottom: 1px solid #ddd;
+    }
+    #error {
+        color: red;
+        margin: 10px 0;
+    }
+    .player-area {
+        margin: 20px 0;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        background: #fafafa;
+    }
+    
+    .player {
+        padding: 8px;
+        margin: 5px 0;
+        background: #fff;
+        border: 1px solid #eee;
+        border-radius: 4px;
+        font-weight: bold;
+    }
+    
+    #start-button {
+        display: block;
+        width: 100%;
+        margin: 20px 0;
+        padding: 15px;
+        background-color: #28a745;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        font-size: 1.1em;
+        cursor: pointer;
+    }
+    
+    #start-button:hover {
+        background-color: #218838;
+    }
+    .help-text {
+        font-size: 0.8em;
+        color: #666;
+        margin-top: 5px;
+        font-style: italic;
+    }
+    #leave-button {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        padding: 8px 16px;
+    }
+    .turn-indicator {
+        font-size: 1.2em;
+        font-weight: bold;
+        color: #2c3e50;
+        margin: 10px 0;
+        padding: 10px;
+        background-color: #f8f9fa;
+        border-radius: 5px;
         text-align: center;
     }
-    th {
-        background-color: #f8f9fa;
+
+    .error-message {
+        color: #dc3545;
+        margin: 10px 0;
+    }
+
+    input:disabled, button:disabled {
+        background-color: #e9ecef;
+        cursor: not-allowed;
     }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container">
-    <h1>{{ room.name if room else "게임방 선택" }}</h1>
+    <h1 id="room-title">{{ room_name }}</h1>
     
-    {% if room %}
-        <div class="player-area">
-            <h3>참가자 목록</h3>
-            <ul id="players">
-                {% for player in room.players %}
-                    <li>{{ player }}</li>
-                {% endfor %}
-            </ul>
-        </div>
+    <button id="leave-button" class="btn btn-danger">게임 나가기</button>
+    
+    <div class="player-area">
+        <h3>참가자 목록</h3>
+        <div id="players"></div>
+    </div>
 
-        <form id="guess-form">
+    <button id="start-button" style="display: none;">게임 시작</button>
+
+    <div class="game-area">
+        <div id="current-turn" class="turn-indicator"></div>
+        <form id="guess-form" style="display: none;">
             <input type="text" id="guess" placeholder="추측할 단어를 입력하세요">
-            <button type="submit" class="btn btn-primary">추측하기</button>
+            <button type="submit" id="submit-guess">추측하기</button>
         </form>
+        <div id="error" class="error-message"></div>
+    </div>
 
-        <div class="log-area">
-            <table id="guesses">
+    <div class="log-area">
+        <h3>추측 기록</h3>
+        <table id="guesses">
+            <thead>
                 <tr>
                     <th>#</th>
-                    <th>단어</th>
+                    <th>플레이어</th>
+                    <th>추측 단어</th>
                     <th>유사도</th>
-                    <th>순위</th>
+                    <th>시간</th>
                 </tr>
-            </table>
-        </div>
-    {% else %}
-        <div class="room-list">
-            <p>참여할 수 있는 게임방이 없습니다.</p>
-            <button onclick="window.location.href='/'" class="btn btn-primary">메인으로 돌아가기</button>
-        </div>
-    {% endif %}
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+<script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
 <script>
-    const socket = io();
-    const guesses = [];
-    const guessed = new Set();
+    document.addEventListener('DOMContentLoaded', function() {
+        const socket = io();
+        const roomId = '{{ room_id }}';
+        const username = '{{ username }}';
+        let gameStarted = false;
+        let currentTurn = null;
 
-    document.getElementById('guess-form')?.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const guess = document.getElementById('guess').value.trim();
-        
-        if (!guess || guessed.has(guess)) return;
-        
-        socket.emit('make_guess', {
-            room_id: '{{ room_id }}',
-            guess: guess
+        // 나가기 버튼 클릭 이벤트
+        document.getElementById('leave-button').addEventListener('click', function() {
+            leaveGame();
         });
-        
-        document.getElementById('guess').value = '';
-    });
 
-    socket.on('guess_result', function(data) {
-        if (data.error) {
-            alert(data.error);
+        // 게임 나가기 함수
+        function leaveGame() {
+            socket.emit('leave_game', {
+                room_id: roomId,
+                username: username
+            });
+            window.location.href = '/';  // 메인 페이지로 이동
+        }
+
+        // 페이지 나갈 때 자동 방 나가기
+        window.addEventListener('beforeunload', function() {
+            socket.emit('leave_game', {
+                room_id: roomId,
+                username: username
+            });
+        });
+
+        // 방 참가
+        socket.emit('join_room', {
+            room_id: roomId,
+            username: username
+        });
+
+        // 플레이어 목록 업데이트
+        function updatePlayerList(players) {
+            const playerList = document.getElementById('players');
+            playerList.innerHTML = players.map(player => 
+                `<div class="player">${player}${player === username ? ' (나)' : ''}</div>`
+            ).join('');
+
+            // 방장(첫 번째 플레이어)인 경우에만 시작 버튼 표시
+            const isHost = players[0] === username;
+            const startButton = document.getElementById('start-button');
+            startButton.style.display = isHost && !gameStarted ? 'block' : 'none';
+        }
+
+        let guessed = new Set();
+
+        if (!username) {
+            window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
             return;
         }
 
-        guessed.add(data.guess);
-        guesses.push([data.similarity, data.guess, guesses.length + 1]);
-        updateGuessLog();
-    });
+        // 게임 시작 함수
+        document.getElementById('start-button').onclick = function() {
+            socket.emit('start_game', { room_id: roomId });
+        };
 
-    socket.on('player_left', function(data) {
-        const playersList = document.getElementById('players');
-        playersList.innerHTML = data.players.map(player => 
-            `<li>${player}</li>`
-        ).join('');
-    });
+        // 추측 기록 업데이트
+        function updateGuessLog(guessHistory) {
+            const tbody = document.querySelector('#guesses tbody');
+            tbody.innerHTML = guessHistory.map((guess) => {
+                const timestamp = new Date(guess.timestamp);
+                const timeString = timestamp.toLocaleTimeString();
+                const similarity = (guess.similarity * 100).toFixed(2);
+                
+                // 유사도에 따른 색상 및 클래스 설정
+                let similarityClass = '';
+                if (similarity >= 90) similarityClass = 'very-high';
+                else if (similarity >= 70) similarityClass = 'high';
+                else if (similarity >= 50) similarityClass = 'medium';
+                else similarityClass = 'low';
+                
+                return `
+                    <tr>
+                        <td>${guess.turn}</td>
+                        <td>${guess.username}</td>
+                        <td>${guess.guess}</td>
+                        <td class="similarity ${similarityClass}">${similarity}%</td>
+                        <td>${timeString}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
 
-    function updateGuessLog() {
-        const table = document.getElementById('guesses');
-        table.innerHTML = `<tr><th>#</th><th>단어</th><th>유사도</th><th>순위</th></tr>`;
-        guesses.forEach(([similarity, word, index]) => {
-            table.innerHTML += `
-                <tr>
-                    <td>${index}</td>
-                    <td>${word}</td>
-                    <td>${(similarity * 100).toFixed(2)}%</td>
-                    <td>${index}</td>
-                </tr>`;
+        // 스타일 추가
+        const style = document.createElement('style');
+        style.textContent = `
+            .similarity {
+                font-weight: bold;
+                text-align: center;
+            }
+            .very-high { 
+                color: #ff0000;
+                background-color: #ffe6e6;
+            }
+            .high { 
+                color: #ff6600;
+                background-color: #fff0e6;
+            }
+            .medium { 
+                color: #ffcc00;
+                background-color: #fffbe6;
+            }
+            .low { 
+                color: #666666;
+            }
+            
+            .log-area table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 15px;
+            }
+            .log-area th, .log-area td {
+                padding: 10px;
+                text-align: left;
+                border-bottom: 1px solid #ddd;
+            }
+            .log-area tr:hover {
+                background-color: #f5f5f5;
+            }
+            
+            #guesses {
+                margin-top: 20px;
+                width: 100%;
+            }
+            
+            #guesses th {
+                background-color: #f8f9fa;
+                font-weight: bold;
+                padding: 12px;
+            }
+            
+            #guesses td {
+                padding: 10px;
+                vertical-align: middle;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // 방 정보 업데이트 함수
+        function updateRoomInfo(data) {
+            if (data.name) {
+                document.getElementById('room-title').textContent = data.name;
+            }
+            updatePlayerList(data.players);
+        }
+
+        // 소켓 이벤트 리스너
+        socket.on('room_joined', data => {
+            gameStarted = data.started;
+            updateRoomInfo(data);
+            if (data.guess_history) {
+                updateGuessLog(data.guess_history);
+            }
+            
+            // 게임 시작 여부에 따른 UI 업데이트
+            document.getElementById('guess-form').style.display = 
+                gameStarted ? 'block' : 'none';
         });
-    }
+
+        socket.on('guess_result', data => {
+            if (data.error) {
+                document.getElementById('error').textContent = data.error;
+                return;
+            }
+            updateGuessLog(data.guess_history);
+            document.getElementById('error').textContent = ''; // 에러 메시지 초기화
+        });
+
+        socket.on('game_over', data => {
+            alert(`게임 종료!\n승자: ${data.winner}\n정답: ${data.word}`);
+            updateGuessLog(data.guess_history);
+            document.getElementById('guess-form').style.display = 'none';
+        });
+
+        socket.on('player_left', data => {
+            updatePlayerList(data.players);
+        });
+
+        socket.on('error', data => {
+            document.getElementById('error').textContent = data.message;
+        });
+
+        // 정답 표시 이벤트 리스너 추가
+        socket.on('show_answer', data => {
+            alert(data.message);
+        });
+
+        // 추측 제출 폼 수정
+        document.getElementById('guess-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const guessInput = document.getElementById('guess');
+            const guess = guessInput.value.trim();
+
+            if (!guess) {
+                document.getElementById('error').textContent = "단어를 입력하세요";
+                return;
+            }
+
+            // 비밀 명령어가 아닌 경우에만 중복 체크
+            if (!['/정답', '!정답'].includes(guess) && guessed.has(guess)) {
+                document.getElementById('error').textContent = "이미 시도한 단어입니다";
+                return;
+            }
+
+            socket.emit('submit_guess', {
+                room_id: roomId,
+                username: username,
+                guess: guess
+            });
+
+            // 비밀 명령어가 아닌 경우에만 guessed에 추가
+            if (!['/정답', '!정답'].includes(guess)) {
+                guessed.add(guess);
+            }
+            
+            guessInput.value = '';
+            document.getElementById('error').textContent = '';
+        });
+
+        // 게임 나가기
+        window.exitGame = function() {
+            socket.emit('leave_room', {
+                room_id: roomId,
+                username: username
+            });
+            window.location.href = '/';
+        };
+
+        // 게임 시작 이벤트
+        socket.on('game_started', data => {
+            gameStarted = true;
+            currentTurn = data.first_player;
+            document.getElementById('start-button').style.display = 'none';
+            document.getElementById('guess-form').style.display = 'block';
+            document.getElementById('current-turn').textContent = 
+                `${currentTurn}님의 차례입니다.`;
+            
+            // 자신의 턴이 아니면 입력 비활성화
+            const guessInput = document.getElementById('guess');
+            const submitButton = document.getElementById('submit-guess');
+            guessInput.disabled = username !== currentTurn;
+            submitButton.disabled = username !== currentTurn;
+        });
+
+        // 게임 종료/초기화 이벤트 리스너
+        socket.on('game_reset', data => {
+            document.getElementById('error').textContent = data.message;
+            document.getElementById('guess-form').style.display = 'none';
+            document.getElementById('start-button').style.display = 
+                game['players'][0] === username ? 'block' : 'none';
+            
+            // 게임 로그 초기화
+            document.getElementById('guess-log').innerHTML = '';
+            guessed.clear();  // 추측 기록 초기화
+        });
+
+        // 방 삭제 이벤트 리스너
+        socket.on('room_closed', data => {
+            if (data.room_id === roomId) {
+                alert('방이 삭제되었습니다.');
+                window.location.href = '/';  // 메인 페이지로 이동
+            }
+        });
+
+        // 플레이어 퇴장 이벤트 리스너
+        socket.on('player_left', data => {
+            updatePlayerList(data.players);
+            if (data.is_host === username) {
+                // 새로운 방장이 된 경우 시작 버튼 표시
+                document.getElementById('start-button').style.display = 
+                    !gameStarted ? 'block' : 'none';
+            }
+        });
+
+        // 추측 결과 이벤트 리스너
+        socket.on('guess_result', data => {
+            updateGuessLog(data.guess_history);
+            currentTurn = data.next_player;
+            
+            // 현재 턴 표시 업데이트
+            document.getElementById('current-turn').textContent = 
+                `${currentTurn}님의 차례입니다.`;
+            
+            // 자신의 턴인지 확인하여 입력폼 활성화/비활성화
+            const guessInput = document.getElementById('guess');
+            const submitButton = document.getElementById('submit-guess');
+            guessInput.disabled = username !== currentTurn;
+            submitButton.disabled = username !== currentTurn;
+        });
+
+        // 에러 메시지 표시
+        socket.on('error', data => {
+            document.getElementById('error').textContent = data.message;
+        });
+    });
 </script>
 {% endblock %}

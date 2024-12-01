@@ -55,6 +55,14 @@
         color: #333;
         margin: 10px 0;
     }
+    .no-rooms {
+        text-align: center;
+        padding: 20px;
+        color: #666;
+        font-style: italic;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+    }
 </style>
 {% endblock %}
 
@@ -112,8 +120,15 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 <script>
     const socket = io();
+    const username = '{{ username }}';
 
     function createRoom() {
+        // 로그인 체크 추가
+        if (!username) {
+            window.location.href = '/login';
+            return;
+        }
+
         const roomName = prompt('방 이름을 입력하세요:');
         if (!roomName) return;
 
@@ -122,7 +137,10 @@
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ name: roomName })
+            body: JSON.stringify({ 
+                name: roomName,
+                username: username  // 사용자 이름 추가
+            })
         })
         .then(response => response.json())
         .then(data => {
@@ -133,29 +151,55 @@
         .catch(error => console.error('Error:', error));
     }
 
-    socket.on('rooms_update', function(updatedRooms) {
+    function updateRoomsList(rooms) {
         const roomsList = document.getElementById('rooms');
-        roomsList.innerHTML = updatedRooms.map(room => `
-            <li data-room-id="${room.id}">
-                <span>${room.name} (${room.players.length}/2)</span>
-                ${
-                    {% if logged_in %}
-                        room.players.length < 2 ?
-                        `<a href="/room/${room.id}" class="btn btn-primary">참여하기</a>` :
-                        '<span class="room-full">방이 가득 찼습니다</span>'
-                    {% else %}
-                        '<span>참여하려면 로그인하세요</span>'
-                    {% endif %}
-                }
-            </li>
-        `).join('');
-    });
+        if (!rooms || rooms.length === 0) {
+            roomsList.innerHTML = '<li class="no-rooms">현재 생성된 방이 없습니다.</li>';
+            return;
+        }
 
-    socket.on('room_closed', function(data) {
-        const roomElement = document.querySelector(`[data-room-id="${data.room_id}"]`);
+        roomsList.innerHTML = rooms.map(room => {
+            const playerCount = room.players ? room.players.length : 0;
+            return `
+                <li data-room-id="${room.id}">
+                    <span>${room.name} (${playerCount}/2)</span>
+                    ${
+                        {% if logged_in %}
+                            playerCount < 2 
+                                ? `<a href="/room/${room.id}" class="btn btn-primary">참여하기</a>`
+                                : '<span class="room-full">방이 가득 찼습니다</span>'
+                        {% else %}
+                            '<span>참여하려면 로그인하세요</span>'
+                        {% endif %}
+                    }
+                </li>
+            `;
+        }).join('');
+    }
+
+    // 방 삭제 이벤트 리스너
+    socket.on('room_closed', data => {
+        const roomElement = document.querySelector(`li[data-room-id="${data.room_id}"]`);
         if (roomElement) {
             roomElement.remove();
+            
+            // 모든 방이 삭제되었는지 확인
+            const roomsList = document.getElementById('rooms');
+            if (!roomsList.children.length || roomsList.children.length === 0) {
+                roomsList.innerHTML = '<li class="no-rooms">현재 생성된 방이 없습니다.</li>';
+            }
         }
+    });
+
+    // 방 목록 업데이트 이벤트 리스너
+    socket.on('rooms_update', updateRoomsList);
+
+    // 초기 방 목록 로드
+    window.addEventListener('DOMContentLoaded', () => {
+        fetch('/api/rooms')
+            .then(response => response.json())
+            .then(rooms => updateRoomsList(rooms))
+            .catch(error => console.error('Error:', error));
     });
 </script>
 {% endblock %}
