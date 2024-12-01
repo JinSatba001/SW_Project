@@ -9,6 +9,14 @@ services:
       - redis
     environment:
       - REDIS_URL=redis://redis:6379/0
+    command: >
+      gunicorn wsgi:application
+      --bind 0.0.0.0:5000
+      --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker
+      --workers 1
+      --timeout 120
+      --log-level debug
+      --preload
     networks:
       - semantle_network
 
