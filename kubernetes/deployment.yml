@@ -2,10 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: flask-deployment
-  labels:
-    app: flask-app
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: flask-app
@@ -15,44 +13,37 @@ spec:
         app: flask-app
     spec:
       containers:
-      - name: flask-app
-        image: twonose/flask-app:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 5000
-        env:
-        - name: REDIS_HOST
-          value: "redis-service"
-        - name: REDIS_PORT
-          value: "6379"
-        - name: FLASK_APP
-          value: "semantle.py"
-        - name: FLASK_ENV
-          value: "production"
-        - name: REDIS_URL
-          value: "redis://redis-service:6379"
-        volumeMounts:
-        - name: word-vectors
-          mountPath: /app/data
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "200m"
+        - name: flask-app
+          image: twonose/flask-app:latest  # Docker 이미지 이름으로 교체
+          ports:
+            - containerPort: 5000
+          env:
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+          volumeMounts:
+            - name: word-vectors
+              mountPath: /app/word_vectors
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "500m"
+            limits:
+              memory: "256Mi"
+              cpu: "1"
       volumes:
-      - name: word-vectors
-        persistentVolumeClaim:
-          claimName: word-vectors-pvc
-
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: redis-pvc
+        - name: word-vectors
+          persistentVolumeClaim:
+            claimName: word-vectors-pvc
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: redis-deployment
-  labels:
-    app: redis
 spec:
   replicas: 1
   selector:
@@ -64,18 +55,16 @@ spec:
         app: redis
     spec:
       containers:
-      - name: redis
-        image: redis:latest
-        ports:
-        - containerPort: 6379
-        volumeMounts:
-        - name: redis-data
-          mountPath: /data
-        command:
-        - redis-server
-        - --appendonly
-        - "yes"
+        - name: redis
+          image: redis:latest
+          ports:
+            - containerPort: 6379
+          command: ["redis-server", "--appendonly", "yes"]
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
       volumes:
-      - name: redis-data
-        persistentVolumeClaim:
-          claimName: redis-pvc
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: redis-pvc
+---
