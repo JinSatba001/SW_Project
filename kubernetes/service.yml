@@ -1,12 +1,29 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: game-server-service
+  name: flask-service
+  annotations:
+    cloud.google.com/load-balancer-type: "External"
 spec:
   selector:
-    app: game-server
+    app: flask-app
+  ports:
+    - name: flask-port
+      protocol: TCP
+      port: 5000
+      targetPort: 5000
+      nodePort: 30001
+  type: LoadBalancer
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+spec:
+  selector:
+    app: redis
   ports:
     - protocol: TCP
-      port: 80         # 외부에 노출될 포트
-      targetPort: 5000 # Flask 컨테이너의 포트
-  type: LoadBalancer  # 외부에서 접근 가능하도록 설정
+      port: 6379
+      targetPort: 6379

@@ -1,24 +1,56 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>회원가입</title>
-</head>
-<body>
+{% extends "base.html" %}
+
+{% block title %}회원가입{% endblock %}
+
+{% block styles %}
+<style>
+    .container {
+        max-width: 400px;
+        margin: 50px auto;
+    }
+    form p {
+        margin: 15px 0;
+    }
+    input[type="text"], input[type="password"] {
+        width: 100%;
+        padding: 10px;
+        margin: 5px 0;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+    }
+    input[type="submit"] {
+        background-color: #28a745;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        font-size: 16px;
+        cursor: pointer;
+        border-radius: 5px;
+    }
+    input[type="submit"]:hover {
+        background-color: #218838;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
     <h2>회원가입</h2>
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
-        <ul>
-        {% for category, message in messages %}
-            <li class="{{ category }}">{{ message }}</li>
-        {% endfor %}
-        </ul>
+        <div class="messages">
+            {% for category, message in messages %}
+                <p>{{ message }}</p>
+            {% endfor %}
+        </div>
     {% endif %}
     {% endwith %}
-    <form method="POST">
-        <p>사용자명: <input type="text" name="username"></p>
-        <p>비밀번호: <input type="password" name="password"></p>
+    <form method="POST" action="{{ url_for('register') }}">
+        <p><input type="text" name="username" placeholder="사용자명"></p>
+        <p><input type="password" name="password" placeholder="비밀번호"></p>
         <p><input type="submit" value="가입하기"></p>
     </form>
     <p><a href="/login">로그인으로 돌아가기</a></p>
-</body>
-</html>
+    <button onclick="window.location.href='/'">메인 화면</button>
+</div>
+{% endblock %}

@@ -1,12 +1,38 @@
-version: '3'
+version: '3.8'
+
 services:
-  web:
+  semantle:
     build: .
     ports:
       - "5000:5000"
     depends_on:
       - redis
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    command: >
+      gunicorn wsgi:application
+      --bind 0.0.0.0:5000
+      --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker
+      --workers 1
+      --timeout 120
+      --log-level debug
+      --preload
+    networks:
+      - semantle_network
+
   redis:
     image: redis:latest
     ports:
-      - "6379:6379" 
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - semantle_network
+
+networks:
+  semantle_network:
+    driver: bridge
+
+volumes:
+  redis_data:

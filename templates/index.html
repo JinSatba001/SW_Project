@@ -1,230 +1,205 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>단어 유사도 추측 게임</title>
+{% extends "base.html" %}
 
-    <link rel="icon" href="/assets/favicon.ico" sizes="any">
+{% block title %}단어 유사도 추측 게임{% endblock %}
 
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            background-color: #f4f4f9;
-            margin: 0;
-            padding: 0;
-        }
-        .container {
-            padding: 20px;
-            max-width: 600px;
-            margin: 50px auto;
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-        }
-        .room-list {
-            margin-top: 20px;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            background: #fafafa;
-            text-align: left;
-        }
-        button {
-            background-color: #007BFF;
-            color: white;
-            border: none;
-            margin: 10px;
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-            border-radius: 5px;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        .user-info {
-            margin-bottom: 20px;
-            padding: 10px;
-            background: #e9ecef;
-            border-radius: 5px;
-        }
-        #username-display {
-            font-weight: bold;
-            color: #007BFF;
-        }
-        .header {
-            padding: 15px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .logout-btn {
-            background-color: #dc3545;
-        }
-        
-        .logout-btn:hover {
-            background-color: #c82333;
-        }
-        
-        .login-btn {
-            background-color: #28a745;
-        }
-        
-        .login-btn:hover {
-            background-color: #218838;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            {% if username %}
-                <span>안녕하세요, {{ username }}님!</span>
-                <button class="logout-btn" onclick="window.location.href='{{ url_for('logout') }}'">로그아웃</button>
-            {% else %}
-                <span>게임을 시작하려면 로그인이 필요합니다</span>
-                <button class="login-btn" onclick="window.location.href='{{ url_for('login') }}'">로그인하기</button>
-            {% endif %}
-        </div>
-        <h1>단어 맞추기 게임</h1>
-        <p>1대1 단어 맞추기! 친구와 함께 경쟁해보세요.</p>
-        <div class="user-info">
-            <p>현재 사용자: <span id="username-display">이름 설정 필요</span></p>
-            <button onclick="setUsername()">이름 설정</button>
-        </div>
-        <div>
-            <button onclick="createRoom()">Create Room</button>
-        </div>
-        <div id="room-list" class="room-list">
-            <h3>생성된 방 리스트</h3>
-            <ul id="rooms">
-                {% for room in rooms.values() %}
-                <li data-room-id="{{ room.id }}">
-                    {{ room.name }} ({{ room.players|length }}/2)
-                    {% if room.players|length < 2 and session.username %}
-                        <a href="{{ url_for('room_detail', room_id=room.id) }}" class="join-button">참여하기</a>
-                    {% elif not session.username %}
-                        <span>참여하려면 로그인하세요</span>
-                    {% else %}
-                        <span class="room-full">방 가득참</span>
-                    {% endif %}
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
+{% block styles %}
+<style>
+    .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 20px;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #eee;
+    }
+    .auth-buttons {
+        display: flex;
+        gap: 10px;
+    }
+    .room-list {
+        margin-top: 20px;
+    }
+    .room-list ul {
+        list-style: none;
+        padding: 0;
+    }
+    .room-list li {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 20px;
+        margin: 10px 0;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+        transition: background-color 0.3s;
+    }
+    .room-list li:hover {
+        background-color: #e9ecef;
+    }
+    .create-room-btn {
+        margin: 20px 0;
+        padding: 10px 20px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: bold;
+    }
+    .room-full {
+        color: #dc3545;
+        font-weight: bold;
+    }
+    .welcome-message {
+        font-size: 1.2em;
+        color: #333;
+        margin: 10px 0;
+    }
+    .no-rooms {
+        text-align: center;
+        padding: 20px;
+        color: #666;
+        font-style: italic;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="header">
+        <h1>단어 유사도 추측 게임</h1>
+        {% if logged_in %}
+            <div class="user-info">
+                <span class="welcome-message">{{ username }}님 환영합니다!</span>
+                <a href="{{ url_for('logout') }}" class="btn btn-danger">로그아웃</a>
+            </div>
+        {% else %}
+            <div class="auth-buttons">
+                <a href="{{ url_for('login') }}" class="btn btn-primary">로그인</a>
+                <a href="{{ url_for('register') }}" class="btn btn-secondary">회원가입</a>
+            </div>
+        {% endif %}
     </div>
 
-    <script>
-        // WebSocket 연결
-        const socket = io();
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            <div class="messages">
+                {% for message in messages %}
+                    <p>{{ message }}</p>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
 
-        // 사용자 이름 관련 함수들 추가
-        function getUsername() {
-            return localStorage.getItem('username');
-        }
-
-        function setUsername() {
-            const currentName = getUsername() || '';
-            const newName = prompt("사용자 이름을 입력하세요:", currentName);
-            
-            if (newName) {
-                localStorage.setItem('username', newName);
-                updateUsernameDisplay();
-            }
-        }
-
-        function updateUsernameDisplay() {
-            const username = getUsername();
-            const usernameDisplay = document.getElementById('username-display');
-            usernameDisplay.textContent = username || '이름 설정 필요';
-        }
-        
-        // 방 생성
-        async function createRoom() {
-            const username = getUsername();
-            if (!username) {
-                alert('먼저 이름을 설정해주세요!');
-                setUsername();
-                return;
-            }
-
-            const roomName = prompt("방 이름을 입력하세요:");
-            if (!roomName) return;
-            
-            try {
-                const response = await fetch('/api/rooms', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ 
-                        name: roomName,
-                        username: username
-                    })
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    window.location.href = `/room/${data.room_id}`;
-                }
-            } catch (error) {
-                console.error('방 생성 실패:', error);
-                alert('방 생성에 실패했습니다.');
-            }
-        }
-
-         // 페이지 로드 시 사용자 이름 표시 업데이트
-         document.addEventListener('DOMContentLoaded', () => {
-            updateUsernameDisplay();
-            if (!getUsername()) {
-                setUsername();
-            }
-        });
-
-        // 방 목록 갱신
-        function updateRoomList(rooms) {
-            const roomList = document.getElementById('rooms');
-            roomList.innerHTML = rooms.map(room => `
-                <li>
-                    ${room.name} (${room.players}/2)
-                    <button onclick="joinRoom('${room.id}')" 
-                            ${room.players >= 2 ? 'disabled' : ''}>
-                        참여하기
-                    </button>
+    <div class="room-list">
+        <h2>게임방 목록</h2>
+        {% if logged_in %}
+            <button onclick="createRoom()" class="create-room-btn">새 게임방 만들기</button>
+        {% endif %}
+        <ul id="rooms">
+            {% for room in rooms.values() %}
+                <li data-room-id="{{ room.id }}">
+                    <span>{{ room.name }} ({{ room.players|length }}/2)</span>
+                    {% if logged_in and room.players|length < 2 %}
+                        <a href="/room/{{ room.id }}" class="btn btn-primary">참여하기</a>
+                    {% elif not logged_in %}
+                        <span>참여하려면 로그인하세요</span>
+                    {% else %}
+                        <span class="room-full">방이 가득 찼습니다</span>
+                    {% endif %}
                 </li>
-            `).join('');
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+<script>
+    const socket = io();
+    const username = '{{ username }}';
+
+    function createRoom() {
+        // 로그인 체크 추가
+        if (!username) {
+            window.location.href = '/login';
+            return;
         }
 
-        // 실시간 방 목록 업데이트
-        socket.on('rooms_update', function(rooms) {
-            const roomList = document.getElementById('rooms');
-            roomList.innerHTML = rooms.map(room => `
+        const roomName = prompt('방 이름을 입력하세요:');
+        if (!roomName) return;
+
+        fetch('/api/rooms', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+                name: roomName,
+                username: username  // 사용자 이름 추가
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.room_id) {
+                window.location.href = `/room/${data.room_id}`;
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    }
+
+    function updateRoomsList(rooms) {
+        const roomsList = document.getElementById('rooms');
+        if (!rooms || rooms.length === 0) {
+            roomsList.innerHTML = '<li class="no-rooms">현재 생성된 방이 없습니다.</li>';
+            return;
+        }
+
+        roomsList.innerHTML = rooms.map(room => {
+            const playerCount = room.players ? room.players.length : 0;
+            return `
                 <li data-room-id="${room.id}">
-                    ${room.name} (${room.players}/2)
-                    ${room.players < 2 && '{{ session.username }}' ? 
-                        `<a href="/room/${room.id}" class="join-button">참여하기</a>` :
-                        !session.username ? 
-                            '<span>참여하려면 로그인하세요</span>' :
-                            '<span class="room-full">방 가득참</span>'
+                    <span>${room.name} (${playerCount}/2)</span>
+                    ${
+                        {% if logged_in %}
+                            playerCount < 2 
+                                ? `<a href="/room/${room.id}" class="btn btn-primary">참여하기</a>`
+                                : '<span class="room-full">방이 가득 찼습니다</span>'
+                        {% else %}
+                            '<span>참여하려면 로그인하세요</span>'
+                        {% endif %}
                     }
                 </li>
-            `).join('');
-        });
+            `;
+        }).join('');
+    }
 
-        socket.on('room_closed', function(data) {
-            // 방 목록에서 해당 방 제거
-            const roomElement = document.querySelector(`[data-room-id="${data.room_id}"]`);
-            if (roomElement) {
-                roomElement.remove();
+    // 방 삭제 이벤트 리스너
+    socket.on('room_closed', data => {
+        const roomElement = document.querySelector(`li[data-room-id="${data.room_id}"]`);
+        if (roomElement) {
+            roomElement.remove();
+            
+            // 모든 방이 삭제되었는지 확인
+            const roomsList = document.getElementById('rooms');
+            if (!roomsList.children.length || roomsList.children.length === 0) {
+                roomsList.innerHTML = '<li class="no-rooms">현재 생성된 방이 없습니다.</li>';
             }
-        });
+        }
+    });
 
-        // 초기 방 목록 로드
-        loadRooms();
-    </script>
-</body>
-</html>
+    // 방 목록 업데이트 이벤트 리스너
+    socket.on('rooms_update', updateRoomsList);
+
+    // 초기 방 목록 로드
+    window.addEventListener('DOMContentLoaded', () => {
+        fetch('/api/rooms')
+            .then(response => response.json())
+            .then(rooms => updateRoomsList(rooms))
+            .catch(error => console.error('Error:', error));
+    });
+</script>
+{% endblock %}
