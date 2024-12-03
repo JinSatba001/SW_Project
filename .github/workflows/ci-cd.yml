@@ -94,7 +94,7 @@ jobs:
         fi
 
     - name: Upload Kubernetes files
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: kubernetes-files-${{ steps.branch_name.outputs.branch }}
         path: |
