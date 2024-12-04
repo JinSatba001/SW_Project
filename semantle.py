@@ -12,7 +12,7 @@ import json
 import random
 import uuid
 from functools import wraps
-from word2vec import calculate_similarity, get_random_word
+from word2vec import similarity
 
 # Flask 앱 초기화
 app = Flask(__name__)
@@ -123,8 +123,13 @@ def login_required(f):
 
 # 게임 관련 함수들
 def get_random_word():
-    words = load_words()
-    return random.choice(words)
+    try:
+        with open('data/secrets.txt', 'r', encoding='utf-8') as f:
+            secret_words = [line.strip() for line in f if line.strip()]
+        return random.choice(secret_words)
+    except Exception as e:
+        print(f"Error loading secret words: {e}")
+        return "기본단어"  # 오류 시 기본 단어 반환
 
 def load_words():
     try:
@@ -134,9 +139,7 @@ def load_words():
         print(f"Error loading words: {e}")
         return []
 
-def calculate_similarity(word1, word2):
-    # 실제 유사도 계산 로직 구현 필요
-    return random.random()
+
 
 # 라우트들
 @app.route('/')
@@ -407,23 +410,33 @@ def handle_guess(data):
             emit('error', {'message': '이미 시도한 단어입니다.'})
             return
             
-        # word2vec의 유사도 계산 함수 사용
+        # 타겟 단어와 추측 단어의 유사도 계산
         target_word = game['word']
-        similarity = calculate_similarity(target_word, guess)  # word2vec의 함수 사용
-        
+        try:
+            sim_score = similarity(game['word'], guess)
+            
+            # 정답인 경우 무조건 100% 유사도
+            if guess == target_word:
+                sim_score = 1.0
+                
+        except Exception as e:
+            print(f"Error calculating similarity: {e}")
+            emit('error', {'message': '유사도 계산 중 오류가 발생했습니다.'})
+            return
+            
         # 추측 기록 저장
         guess_record = {
             'username': username,
             'guess': guess,
-            'similarity': similarity,
+            'similarity': sim_score,
             'timestamp': datetime.now().isoformat(),
             'turn': len(game['guess_history']) + 1
         }
         game['guess_history'].append(guess_record)
         
-        # 정답 여부 확인
+        # 정답 여부 확인 및 결과 전송
         if guess == target_word:
-            # 승리 점수 부여
+            # 승리 처리
             game['scores'][username] = game['scores'].get(username, 0) + 10
             emit('game_over', {
                 'winner': username,
@@ -439,24 +452,18 @@ def handle_guess(data):
                 'guess_history': [],
                 'scores': {}
             })
-            
-            # 게임 종료 후 상태 업데이트
-            emit('game_reset', {
-                'message': '게임이 종료되었습니다. 새 게임을 시작할 수 있습니다.'
-            }, room=room_id)
-            
         else:
-            # 게임 진행 중일 때 다음 플레이어 턴 알림 추가
+            # 다음 플레이어 턴 계산
             next_turn = (current_turn + 1) % len(game['players'])
             next_player = game['players'][next_turn]
             
             emit('guess_result', {
                 'username': username,
                 'guess': guess,
-                'similarity': similarity,
+                'similarity': sim_score,
                 'scores': game['scores'],
                 'guess_history': game['guess_history'],
-                'next_player': next_player  # 다음 플레이어 정보 추가
+                'next_player': next_player
             }, room=room_id)
             
     except Exception as e:
