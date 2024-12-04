@@ -25,21 +25,12 @@ jobs:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-    - name: Get branch name
-      id: branch_name
-      shell: bash
-      run: echo "::set-output name=branch::${GITHUB_REF#refs/heads/}"
-
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
         context: .
         push: true
-        tags: |
-          ${{ env.DOCKER_IMAGE }}:${{ steps.branch_name.outputs.branch }}
-          ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
-        cache-from: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache
-        cache-to: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache,mode=max
+        tags: ${{ env.DOCKER_IMAGE }}:latest
 
     - name: Set up Minikube
       uses: medyagh/setup-minikube@master
@@ -47,7 +38,7 @@ jobs:
     - name: Update deployment file
       run: |
         # Update image tag in deployment.yml
-        sed -i 's|twonose/flask-app:latest|${{ env.DOCKER_IMAGE }}:${{ github.sha }}|' kubernetes/deployment.yml
+        sed -i 's|twonose/flask-app:latest|${{ env.DOCKER_IMAGE }}:latest|' kubernetes/deployment.yml
         
         # Show the changes
         cat kubernetes/deployment.yml
