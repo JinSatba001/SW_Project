@@ -42,5 +42,5 @@ minikube service flask-service
 
 ## 종료 방법
 ```bash
-kubectl delete -f k8s/
+kubectl delete -f kubernetes/
 ```
