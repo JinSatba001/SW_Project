@@ -4,132 +4,287 @@
 
 {% block styles %}
 <style>
-    body {
-        font-family: Arial, sans-serif;
-        background-color: #f4f4f9;
-        margin: 0;
-        padding: 20px;
+    :root {
+        --primary-color: #4A90E2;
+        --success-color: #2ECC71;
+        --danger-color: #E74C3C;
+        --warning-color: #F1C40F;
+        --background-color: #F5F7FA;
+        --card-bg: #FFFFFF;
+        --border-color: #E1E8ED;
+        --text-primary: #2C3E50;
+        --text-secondary: #6C7A89;
+        --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+        --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+        --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
     }
+
     .container {
-        max-width: 800px;
-        margin: 0 auto;
-        background: white;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        max-width: 1000px;
+        margin: 2rem auto;
+        padding: 2rem;
+        background: var(--card-bg);
+        border-radius: 16px;
+        box-shadow: var(--shadow-lg);
     }
-    .player-area, .log-area {
-        margin-top: 20px;
-        padding: 15px;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        background: #fafafa;
+
+    #room-title {
+        font-size: 2rem;
+        color: var(--text-primary);
+        margin-bottom: 1.5rem;
+        text-align: center;
+        font-weight: 700;
     }
-    .log-area {
-        max-height: 400px;
-        overflow-y: auto;
+
+    .player-area {
+        background: #F8FAFC;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: var(--shadow-sm);
     }
+
+    .player-area h3 {
+        color: var(--text-primary);
+        margin-bottom: 1rem;
+        font-size: 1.25rem;
+    }
+
+    .players-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 1rem;
+    }
+
+    .player {
+        background: var(--card-bg);
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        box-shadow: var(--shadow-sm);
+        font-weight: 600;
+        color: var(--text-primary);
+        border: 2px solid var(--border-color);
+        transition: all 0.3s ease;
+    }
+
+    .player.current-turn {
+        border-color: var(--primary-color);
+        background-color: #EBF5FF;
+    }
+
+    .game-area {
+        margin: 2rem 0;
+    }
+
+    .turn-indicator {
+        background: linear-gradient(to right, #4A90E2, #357ABD);
+        color: white;
+        padding: 1rem;
+        border-radius: 8px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        text-align: center;
+        margin-bottom: 1.5rem;
+        box-shadow: var(--shadow-sm);
+    }
+
     #guess-form {
-        margin: 20px 0;
         display: flex;
-        gap: 10px;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
     }
+
     #guess {
         flex: 1;
-        padding: 10px;
-        font-size: 16px;
-        border: 1px solid #ddd;
-        border-radius: 5px;
+        padding: 0.875rem 1rem;
+        border: 2px solid var(--border-color);
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.3s ease;
     }
-    button {
-        background-color: #007BFF;
+
+    #guess:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+    }
+
+    #submit-guess {
+        background: var(--primary-color);
         color: white;
         border: none;
-        padding: 10px 20px;
-        border-radius: 5px;
+        padding: 0.875rem 1.5rem;
+        border-radius: 8px;
+        font-weight: 600;
         cursor: pointer;
+        transition: all 0.3s ease;
     }
-    button:hover {
-        background-color: #0056b3;
+
+    #submit-guess:hover {
+        background: #357ABD;
+        transform: translateY(-1px);
     }
-    table {
+
+    .log-area {
+        background: #F8FAFC;
+        border-radius: 12px;
+        padding: 1.5rem;
+        max-height: 400px;
+        overflow-y: auto;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .log-area h3 {
+        color: var(--text-primary);
+        margin-bottom: 1rem;
+        font-size: 1.25rem;
+    }
+
+    #guesses {
         width: 100%;
-        border-collapse: collapse;
-        margin-top: 10px;
+        border-collapse: separate;
+        border-spacing: 0;
     }
-    th, td {
-        padding: 10px;
+
+    #guesses th {
+        background: #EDF2F7;
+        padding: 1rem;
+        font-weight: 600;
         text-align: left;
-        border-bottom: 1px solid #ddd;
+        color: var(--text-primary);
     }
-    #error {
-        color: red;
-        margin: 10px 0;
+
+    #guesses td {
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-secondary);
     }
-    .player-area {
-        margin: 20px 0;
-        padding: 15px;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        background: #fafafa;
+
+    #guesses tr:hover td {
+        background: #F8FAFC;
     }
-    
-    .player {
-        padding: 8px;
-        margin: 5px 0;
-        background: #fff;
-        border: 1px solid #eee;
-        border-radius: 4px;
-        font-weight: bold;
+
+    .similarity {
+        font-weight: 600;
+        text-align: center;
+        padding: 0.5rem;
+        border-radius: 6px;
     }
-    
+
+    .very-high {
+        background: #FEE2E2;
+        color: #DC2626;
+    }
+
+    .high {
+        background: #FEF3C7;
+        color: #D97706;
+    }
+
+    .medium {
+        background: #F3F4F6;
+        color: #4B5563;
+    }
+
+    .low {
+        background: #F3F4F6;
+        color: #6B7280;
+    }
+
     #start-button {
-        display: block;
         width: 100%;
-        margin: 20px 0;
-        padding: 15px;
-        background-color: #28a745;
+        padding: 1rem;
+        background: var(--success-color);
         color: white;
         border: none;
-        border-radius: 5px;
-        font-size: 1.1em;
+        border-radius: 8px;
+        font-size: 1.1rem;
+        font-weight: 600;
         cursor: pointer;
+        transition: all 0.3s ease;
+        margin: 1.5rem 0;
     }
-    
+
     #start-button:hover {
-        background-color: #218838;
+        background: #27AE60;
+        transform: translateY(-1px);
     }
-    .help-text {
-        font-size: 0.8em;
-        color: #666;
-        margin-top: 5px;
-        font-style: italic;
-    }
+
     #leave-button {
         position: absolute;
-        top: 20px;
-        right: 20px;
-        padding: 8px 16px;
+        top: 2rem;
+        right: 2rem;
+        background: var(--danger-color);
+        color: white;
+        border: none;
+        padding: 0.75rem 1.25rem;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
     }
-    .turn-indicator {
-        font-size: 1.2em;
-        font-weight: bold;
-        color: #2c3e50;
-        margin: 10px 0;
-        padding: 10px;
-        background-color: #f8f9fa;
-        border-radius: 5px;
-        text-align: center;
+
+    #leave-button:hover {
+        background: #C0392B;
+        transform: translateY(-1px);
     }
 
     .error-message {
-        color: #dc3545;
-        margin: 10px 0;
+        background: #FEE2E2;
+        color: #DC2626;
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 1rem 0;
+        font-weight: 500;
     }
 
     input:disabled, button:disabled {
-        background-color: #e9ecef;
+        opacity: 0.7;
         cursor: not-allowed;
+    }
+
+    /* 스크롤바 스타일링 */
+    .log-area::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .log-area::-webkit-scrollbar-track {
+        background: #F1F1F1;
+        border-radius: 4px;
+    }
+
+    .log-area::-webkit-scrollbar-thumb {
+        background: #C1C1C1;
+        border-radius: 4px;
+    }
+
+    .log-area::-webkit-scrollbar-thumb:hover {
+        background: #A8A8A8;
+    }
+
+    /* 반응형 디자인 */
+    @media (max-width: 768px) {
+        .container {
+            margin: 1rem;
+            padding: 1rem;
+        }
+
+        #guess-form {
+            flex-direction: column;
+        }
+
+        #submit-guess {
+            width: 100%;
+        }
+
+        #leave-button {
+            position: static;
+            width: 100%;
+            margin-top: 1rem;
+        }
+
+        .players-grid {
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        }
     }
 </style>
 {% endblock %}
@@ -142,7 +297,7 @@
     
     <div class="player-area">
         <h3>참가자 목록</h3>
-        <div id="players"></div>
+        <div id="players" class="players-grid"></div>
     </div>
 
     <button id="start-button" style="display: none;">게임 시작</button>
@@ -150,10 +305,10 @@
     <div class="game-area">
         <div id="current-turn" class="turn-indicator"></div>
         <form id="guess-form" style="display: none;">
-            <input type="text" id="guess" placeholder="추측할 단어를 입력하세요">
+            <input type="text" id="guess" placeholder="추측할 단어를 입력하세요" autocomplete="off">
             <button type="submit" id="submit-guess">추측하기</button>
         </form>
-        <div id="error" class="error-message"></div>
+        <div id="error" class="error-message" style="display: none;"></div>
     </div>
 
     <div class="log-area">
