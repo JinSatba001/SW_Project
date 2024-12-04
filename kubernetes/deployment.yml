@@ -16,6 +16,7 @@ spec:
         - name: flask-app
           image: twonose/flask-app:latest
           imagePullPolicy: Always
+          imagePullPolicy: Always
           ports:
             - containerPort: 5000
           env:
