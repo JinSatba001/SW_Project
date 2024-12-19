@@ -129,7 +129,7 @@ def get_random_word():
         return random.choice(secret_words)
     except Exception as e:
         print(f"Error loading secret words: {e}")
-        return "기본단어"  # 오류 시 기본 단어 반환
+        return "기본단어"  # 오��� 시 기본 단어 반환
 
 def load_words():
     try:
@@ -139,7 +139,39 @@ def load_words():
         print(f"Error loading words: {e}")
         return []
 
+# 차단 관련 함수들
+def ban_user(username: str) -> bool:
+    """사용자를 차단 목록에 추가"""
+    try:
+        # 차단 시간을 현재 시간으로 설정
+        redis_client.hset("banned_users", username, datetime.now().isoformat())
+        
+        # 해당 사용자의 현재 세션 강제 종료
+        for room_id, room in rooms.items():
+            if username in room['players']:
+                handle_leave({'username': username, 'room_id': room_id})
+        
+        return True
+    except Exception as e:
+        print(f"Error banning user: {e}")
+        return False
 
+def unban_user(username: str) -> bool:
+    """사용자를 차단 목록에서 제거"""
+    try:
+        redis_client.hdel("banned_users", username)
+        return True
+    except Exception as e:
+        print(f"Error unbanning user: {e}")
+        return False
+
+def is_user_banned(username: str) -> bool:
+    """사용자가 차단되었는지 확인"""
+    try:
+        return redis_client.hexists("banned_users", username)
+    except Exception as e:
+        print(f"Error checking ban status: {e}")
+        return False
 
 # 라우트들
 @app.route('/')
@@ -151,21 +183,25 @@ def index():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if 'user_id' in session:  # 이미 로그인된 경우
+    if 'user_id' in session:
         return redirect(url_for('index'))
         
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         
+        # 차단된 사용자 체크
+        if is_user_banned(username):
+            flash('차단된 사용자입니다. 관리자에게 문의하세요.')
+            return render_template('login.html')
+        
         user = get_user(username)
         if user and check_password_hash(user['password'], password):
             session['user_id'] = username
-            session.permanent = True  # 세션 유지
+            session.permanent = True
             
-            # next 파라미터가 있으면 해당 페이지로, 없으면 메인으로
             next_page = request.args.get('next')
-            if next_page and next_page.startswith('/'):  # 보안을 위한 체크
+            if next_page and next_page.startswith('/'):
                 return redirect(next_page)
             return redirect(url_for('index'))
         
@@ -298,6 +334,11 @@ def handle_join(data):
     if not username:
         return False
     
+    # 차단된 사용자 체크
+    if is_user_banned(username):
+        emit('error', {'message': '차단된 사용자입니다.'})
+        return False
+    
     room_id = data.get('room_id')
     if not room_id or room_id not in rooms:
         emit('error', {'message': '잘못된 방 정보입니다.'})
@@ -410,7 +451,7 @@ def handle_guess(data):
             emit('error', {'message': '이미 시도한 단어입니다.'})
             return
             
-        # 타겟 단어와 추측 단어의 유사도 계산
+        # 타겟 단���와 추측 단어의 유사도 계산
         target_word = game['word']
         try:
             sim_score = similarity(game['word'], guess)
@@ -510,6 +551,30 @@ def handle_start_game(data):
     except Exception as e:
         print(f"Error in start_game: {e}")
         emit('error', {'message': f'게임 시작 중 오류 발생: {str(e)}'})
+
+# 관리자 전용 라우트 추가
+@app.route('/admin/ban/<username>', methods=['POST'])
+@login_required
+def admin_ban_user(username):
+    admin_username = session.get('user_id')
+    # 관리자 권한 확인 (예: admin 사용자만 가능)
+    if admin_username != 'admin':  # 관리자 계정명을 'admin'으로 가정
+        return jsonify({'error': '권한이 없습니다'}), 403
+        
+    if ban_user(username):
+        return jsonify({'message': f'사용자 {username}이(가) 차단되었습니다'})
+    return jsonify({'error': '차단 처리 중 오류가 발생했습니다'}), 500
+
+@app.route('/admin/unban/<username>', methods=['POST'])
+@login_required
+def admin_unban_user(username):
+    admin_username = session.get('user_id')
+    if admin_username != 'admin':
+        return jsonify({'error': '권한이 없습니다'}), 403
+        
+    if unban_user(username):
+        return jsonify({'message': f'사용자 {username}의 차단이 해제되었습니다'})
+    return jsonify({'error': '차단 해제 중 오류가 발생했습니다'}), 500
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0')

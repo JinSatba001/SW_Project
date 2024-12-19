@@ -1,0 +1,51 @@
+:root {
+    --primary-color: #4A90E2;
+    --success-color: #2ECC71;
+    --danger-color: #E74C3C;
+    --warning-color: #F1C40F;
+    --background-color: #F5F7FA;
+    --card-bg: #FFFFFF;
+    --border-color: #E1E8ED;
+    --text-primary: #2C3E50;
+    --text-secondary: #6C7A89;
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+.container {
+    max-width: 1000px;
+    margin: 2rem auto;
+    padding: 2rem;
+    background: var(--card-bg);
+    border-radius: 16px;
+    box-shadow: var(--shadow-lg);
+}
+
+/* 기존 CSS 내용 그대로 복사... */
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+    .container {
+        margin: 1rem;
+        padding: 1rem;
+    }
+
+    #guess-form {
+        flex-direction: column;
+    }
+
+    #submit-guess {
+        width: 100%;
+    }
+
+    #leave-button {
+        position: static;
+        width: 100%;
+        margin-top: 1rem;
+    }
+
+    .players-grid {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    }
+} 

@@ -1,0 +1,213 @@
+:root {
+    --primary-color: #4A90E2;
+    --secondary-color: #6C63FF;
+    --success-color: #2ECC71;
+    --danger-color: #E74C3C;
+    --background-color: #F5F7FA;
+    --card-bg: #FFFFFF;
+    --border-color: #E1E8ED;
+    --text-primary: #2C3E50;
+    --text-secondary: #6C7A89;
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.container {
+    max-width: 1000px;
+    margin: 2rem auto;
+    padding: 2rem;
+    background: var(--card-bg);
+    border-radius: 16px;
+    box-shadow: var(--shadow-md);
+}
+
+.header {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    margin: -2rem -2rem 2rem -2rem;
+    padding: 2rem;
+    border-radius: 16px 16px 0 0;
+    color: white;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header h1 {
+    margin: 0;
+    font-size: 2rem;
+    font-weight: 700;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.auth-buttons {
+    display: flex;
+    gap: 1rem;
+}
+
+.btn {
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-primary {
+    background: white;
+    color: var(--primary-color);
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.btn-danger {
+    background: var(--danger-color);
+    color: white;
+}
+
+.welcome-message {
+    font-size: 1.1rem;
+    color: white;
+    margin-right: 1rem;
+}
+
+.room-list {
+    padding: 1rem;
+}
+
+.room-list h2 {
+    color: var(--text-primary);
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.create-room-btn {
+    width: 100%;
+    padding: 1rem;
+    background: linear-gradient(135deg, var(--success-color), #27AE60);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-bottom: 2rem;
+}
+
+.create-room-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.room-list ul {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 1rem;
+}
+
+.room-list li {
+    background: #F8FAFC;
+    padding: 1.25rem;
+    border-radius: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.3s ease;
+    border: 2px solid var(--border-color);
+}
+
+.room-list li:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+    border-color: var(--primary-color);
+}
+
+.room-list .room-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.room-list .room-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.room-list .player-count {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.room-full {
+    color: var(--danger-color);
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    background: #FEE2E2;
+    border-radius: 6px;
+}
+
+.no-rooms {
+    text-align: center;
+    padding: 3rem 2rem;
+    background: #F8FAFC;
+    border-radius: 12px;
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    border: 2px dashed var(--border-color);
+}
+
+.messages {
+    background: #FEE2E2;
+    color: var(--danger-color);
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+}
+
+.messages p {
+    margin: 0;
+    font-weight: 500;
+}
+
+@media (max-width: 768px) {
+    .container {
+        margin: 1rem;
+        padding: 1rem;
+    }
+
+    .header {
+        flex-direction: column;
+        gap: 1rem;
+        text-align: center;
+        margin: -1rem -1rem 1rem -1rem;
+        padding: 1.5rem;
+    }
+
+    .room-list li {
+        flex-direction: column;
+        gap: 1rem;
+        text-align: center;
+    }
+
+    .auth-buttons {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .btn {
+        width: 100%;
+        text-align: center;
+    }
+} 
